@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+
+  body {
+    background: #0d0d0d;
+    color: #fafaf8;
+    font-family: 'Outfit', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: rgba(192, 57, 43, 0.3);
+    color: #fafaf8;
+  }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #111; }
+  ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #555; }
+}
+
+@layer components {
+  .card {
+    @apply bg-white/5 border border-white/10 rounded-xl;
+  }
+
+  .card-surface {
+    @apply bg-[#111] border border-white/8 rounded-xl;
+  }
+
+  .btn-primary {
+    @apply bg-accent text-white font-medium px-6 py-3 rounded-lg hover:bg-accent-light transition-all duration-200 active:scale-95;
+  }
+
+  .btn-ghost {
+    @apply border border-white/20 text-white/70 font-medium px-5 py-2.5 rounded-lg hover:bg-white/5 hover:text-white transition-all duration-200 active:scale-95;
+  }
+
+  .label-tag {
+    @apply font-mono text-[10px] tracking-widest uppercase;
+  }
+
+  .section-tag {
+    @apply font-mono text-[11px] tracking-[3px] uppercase text-white/30 mb-3;
+  }
+}
+
+/* Bias meter gradient */
+.bias-track {
+  background: linear-gradient(to right, #3498db, #ecf0f1 40%, #ecf0f1 60%, #e74c3c);
+}
+
+/* Score ring animation */
+@keyframes drawRing {
+  from { stroke-dashoffset: 283; }
+  to { stroke-dashoffset: var(--target-offset); }
+}
+
+.score-ring {
+  animation: drawRing 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+/* Manipulation highlight */
+.flagged-phrase {
+  @apply bg-red-500/20 border-b border-red-400 cursor-pointer;
+  transition: background 0.15s;
+}
+.flagged-phrase:hover {
+  @apply bg-red-500/35;
+}
+
+/* Scan line animation for loading */
+@keyframes scanLine {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(400%); }
+}
+.scan-line {
+  animation: scanLine 1.5s linear infinite;
+}
+
+/* Pulse glow for live indicator */
+@keyframes pulseGlow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.live-dot {
+  animation: pulseGlow 1.5s ease-in-out infinite;
+}
+
+/* Card enter animation */
+@keyframes cardEnter {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.card-enter {
+  animation: cardEnter 0.4s ease-out forwards;
+}
+
+/* Stagger delays */
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
+
+.opacity-0-anim { opacity: 0; }
