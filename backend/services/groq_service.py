@@ -9,8 +9,47 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 MODEL = "llama3-70b-8192"
 
 
-def analyze_article_with_groq(title: str, content: str, url: str) -> dict:
-    prompt = f"""You are TruthLens, an expert AI journalist and media bias analyst. Analyze this news article and return a strict JSON response.
+def analyze_article_with_groq(title: str, content: str, url: str, scrape_failed: bool = False) -> dict:
+
+    if scrape_failed:
+        prompt = f"""You are TruthLens, an expert AI journalist and media bias analyst.
+
+The article could not be scraped directly, but analyze based on what you know about this source.
+
+Article URL: {url}
+Article Title: {title}
+Source domain: {url.split('/')[2] if '//' in url else url}
+
+Use your knowledge of this news source's known editorial stance, bias patterns, and credibility.
+Return ONLY valid JSON (no markdown, no preamble):
+{{
+  "credibility_score": <integer 0-100>,
+  "bias": {{
+    "label": "<one of: Pro-Israel, Pro-Iran, Pro-Palestine, Pro-Russia, Pro-Ukraine, Pro-US, Pro-China, Nationalist, Left-leaning, Right-leaning, Center, Neutral>",
+    "confidence": <integer 0-100>,
+    "pro_side_pct": <integer 0-100>,
+    "against_side_pct": <integer 0-100>,
+    "neutral_pct": <integer 0-100>,
+    "explanation": "<2 sentence explanation based on this source's known bias>"
+  }},
+  "manipulation": {{
+    "level": "Low",
+    "score": 0,
+    "flagged_phrases": [],
+    "emotional_tone": "Unknown — article content unavailable for analysis"
+  }},
+  "fact_check": {{
+    "verifiable_claims": [],
+    "overall_accuracy": "Unknown"
+  }},
+  "summary_eli15": "<Brief explanation of what kind of coverage this source typically provides on this topic>",
+  "key_missing_context": "Full article text was unavailable for analysis — results based on source reputation only.",
+  "source_reliability": "<Established Media|Independent|State-affiliated|Unknown|Tabloid>",
+  "conflict_region": "<main conflict/region based on URL>",
+  "note": "Analysis based on source reputation only — article content could not be retrieved."
+}}"""
+    else:
+        prompt = f"""You are TruthLens, an expert AI journalist and media bias analyst. Analyze this news article and return a strict JSON response.
 
 Article Title: {title}
 Article URL: {url}
@@ -42,7 +81,7 @@ Return ONLY valid JSON with this exact structure (no markdown, no preamble):
     "overall_accuracy": "<High|Medium|Low|Very Low>"
   }},
   "summary_eli15": "<explain this article in 3 sentences as if to a 15 year old, using simple neutral language>",
-  "key_missing_context": "<what important context or other side of story is missing from this article, 1-2 sentences>",
+  "key_missing_context": "<what important context or other side of story is missing, 1-2 sentences>",
   "source_reliability": "<Established Media|Independent|State-affiliated|Unknown|Tabloid>",
   "conflict_region": "<main conflict/region this article is about>"
 }}"""
@@ -98,7 +137,7 @@ def compare_sources_with_groq(articles: list[dict]) -> dict:
     {{"topic": "<topic of disagreement>", "source_positions": [{{"source": "<name>", "position": "<their take>"}}]}}
   ],
   "framing_differences": [
-    {{"aspect": "<framing aspect>", "analysis": "<how sources differ in framing>"}}
+    {{"aspect": "<framing aspect>", "analysis": "<how sources differ>"}}
   ],
   "most_neutral_source": "<source name>",
   "most_biased_source": "<source name>",

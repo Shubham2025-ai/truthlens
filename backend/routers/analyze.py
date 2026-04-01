@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 from services.scraper import extract_article
 from services.groq_service import analyze_article_with_groq, simplify_text
 from services.database import save_analysis, get_analysis_by_url
@@ -28,32 +28,35 @@ async def analyze_url(req: AnalyzeRequest):
             cached["from_cache"] = True
             return cached
 
-    # Scrape article
+    # Scrape article — never raises on fetch failure, returns scrape_failed=True instead
     try:
         article = extract_article(req.url)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch article: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+
+    scrape_failed = article.get("scrape_failed", False)
 
     # AI analysis via Groq
     try:
         ai_result = analyze_article_with_groq(
             title=article["title"],
             content=article["content"],
-            url=req.url
+            url=req.url,
+            scrape_failed=scrape_failed,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
 
-    # Merge article metadata with AI result
     result = {
         **article,
         **ai_result,
         "from_cache": False,
+        "scrape_failed": scrape_failed,
     }
 
-    # Search for related articles from other sources
+    # Related articles
     try:
         query_terms = " ".join(article["title"].split()[:6])
         related = search_same_story(query_terms, exclude_domain=article["source"], limit=3)
@@ -61,15 +64,12 @@ async def analyze_url(req: AnalyzeRequest):
     except Exception:
         result["related_sources"] = []
 
-    # Save to Supabase
     save_analysis(result)
-
     return result
 
 
 @router.post("/analyze/text")
 async def analyze_text(req: TextAnalyzeRequest):
-    """Analyze raw pasted text instead of a URL."""
     if len(req.text.strip()) < 100:
         raise HTTPException(status_code=422, detail="Text too short. Please paste at least 100 characters.")
 
@@ -77,7 +77,8 @@ async def analyze_text(req: TextAnalyzeRequest):
         ai_result = analyze_article_with_groq(
             title=req.title,
             content=req.text,
-            url="text-input"
+            url="text-input",
+            scrape_failed=False,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
@@ -90,6 +91,7 @@ async def analyze_text(req: TextAnalyzeRequest):
         "word_count": len(req.text.split()),
         **ai_result,
         "from_cache": False,
+        "scrape_failed": False,
     }
 
 
