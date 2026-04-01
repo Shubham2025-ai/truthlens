@@ -7,7 +7,6 @@ load_dotenv()
 
 url = os.getenv("SUPABASE_URL")
 key = os.getenv("SUPABASE_KEY")
-
 supabase: Client = create_client(url, key) if url and key else None
 
 
@@ -50,8 +49,22 @@ def get_recent_analyses(limit: int = 20) -> list:
         return []
 
 
+def get_analysis_by_id(analysis_id: str) -> dict | None:
+    if not supabase:
+        return None
+    try:
+        result = supabase.table("analyses") \
+            .select("full_result") \
+            .eq("id", analysis_id) \
+            .single() \
+            .execute()
+        return result.data["full_result"] if result.data else None
+    except Exception as e:
+        print(f"Supabase get by id error: {e}")
+        return None
+
+
 def get_analysis_by_url(url: str) -> dict | None:
-    """Return cached analysis if same URL analyzed in last 1 hour."""
     if not supabase:
         return None
     try:
