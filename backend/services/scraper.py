@@ -14,7 +14,6 @@ SECTION_PATTERNS = [
     r"^https?://[^/]+/(news|world|politics|topics|tag|tags|category|section|hub|search)/?$",
     r"/topics/[^/]+/?$",
     r"/tag/[^/]+/?$",
-    r"/tags/[^/]+/?$",
     r"/category/[^/]+/?$",
     r"/hub/[^/]+/?$",
     r"/search[/?]",
@@ -22,14 +21,11 @@ SECTION_PATTERNS = [
 ]
 
 BLOCKED_SITES = {
-    "nytimes.com":      "NYT blocks scraping. Try AP News, Guardian, or DW News.",
-    "wsj.com":          "WSJ is paywalled. Try Reuters or AP News.",
-    "ft.com":           "FT blocks scraping. Try Reuters or AP News.",
-    "washingtonpost.com": "WaPo blocks scraping. Try AP News or Guardian.",
-    "bloomberg.com":    "Bloomberg blocks scraping. Try Reuters or AP News.",
+    "nytimes.com": "NYT blocks scraping. Try AP News, Guardian, or DW News.",
+    "wsj.com": "WSJ is paywalled. Try Reuters or AP News.",
+    "ft.com": "FT blocks scraping. Try Reuters or AP News.",
+    "bloomberg.com": "Bloomberg blocks scraping. Try Reuters or AP News.",
 }
-
-GOOD_SITES = "apnews.com · theguardian.com · dw.com · reuters.com · bbc.com"
 
 
 def validate_url(url: str) -> None:
@@ -41,85 +37,105 @@ def validate_url(url: str) -> None:
     for pattern in SECTION_PATTERNS:
         if re.search(pattern, url, re.IGNORECASE):
             raise ValueError(
-                f"This looks like a section/homepage, not a specific article. "
-                f"Please paste the URL of an individual article.\n"
-                f"Good sources: {GOOD_SITES}"
+                "This looks like a section page, not a specific article. "
+                "Please paste the URL of one individual news article."
             )
 
 
-def _fetch_html(url: str) -> str:
-    """Try multiple strategies to fetch the page."""
-    domain = urlparse(url).netloc
-
+def _fetch_direct(url: str) -> str | None:
+    """Try direct fetch with multiple user agents."""
     strategies = [
-        # Strategy 1: Chrome browser with referer
         {
             "User-Agent": USER_AGENTS[0],
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
             "Referer": "https://www.google.com/",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
             "Cache-Control": "max-age=0",
         },
-        # Strategy 2: Googlebot (many sites allow this)
         {
-            "User-Agent": USER_AGENTS[2],
+            "User-Agent": USER_AGENTS[2],  # Googlebot
             "Accept": "text/html,application/xhtml+xml",
-            "Accept-Language": "en-US,en;q=0.5",
         },
-        # Strategy 3: Mac Chrome
         {
             "User-Agent": USER_AGENTS[1],
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-GB,en;q=0.9",
-            "Referer": f"https://{domain}/",
+            "Referer": f"https://{urlparse(url).netloc}/",
         },
     ]
-
-    last_status = None
-    for i, headers in enumerate(strategies):
+    for headers in strategies:
         try:
-            resp = httpx.get(url, headers=headers, timeout=25, follow_redirects=True)
-            if resp.status_code == 200:
+            resp = httpx.get(url, headers=headers, timeout=20, follow_redirects=True)
+            if resp.status_code == 200 and len(resp.text) > 500:
                 return resp.text
-            last_status = resp.status_code
-            # Don't retry on these — they won't change with different headers
-            if resp.status_code in (401, 410, 451):
-                break
-        except httpx.TimeoutException:
-            raise ValueError("Request timed out. Please try again.")
-        except Exception as e:
-            if i == len(strategies) - 1:
-                raise ValueError(f"Could not reach this URL: {str(e)}")
+        except Exception:
             continue
+    return None
 
-    # All strategies failed — give helpful message based on status
-    if last_status == 404:
-        raise ValueError(
-            "This article URL returned 404. It may have been removed or the URL is incorrect.\n"
-            "Tip: Copy the URL directly from your browser address bar while viewing the article."
-        )
-    elif last_status == 403:
-        domain_name = urlparse(url).netloc
-        raise ValueError(
-            f"{domain_name} is blocking access.\n"
-            f"Try these sites that work well: {GOOD_SITES}"
-        )
-    elif last_status == 429:
-        raise ValueError("Too many requests to this site. Wait 30 seconds and try again.")
-    else:
-        raise ValueError(
-            f"Could not fetch article (HTTP {last_status}).\n"
-            f"Try these sites: {GOOD_SITES}"
-        )
+
+def _fetch_via_jina(url: str) -> str | None:
+    """
+    Use Jina Reader API (r.jina.ai) as fallback.
+    Free, no API key needed. Returns clean article text.
+    """
+    try:
+        jina_url = f"https://r.jina.ai/{url}"
+        headers = {
+            "User-Agent": USER_AGENTS[0],
+            "Accept": "text/plain, text/html",
+            "X-Return-Format": "text",
+        }
+        resp = httpx.get(jina_url, headers=headers, timeout=30, follow_redirects=True)
+        if resp.status_code == 200 and len(resp.text) > 300:
+            return resp.text
+    except Exception:
+        pass
+    return None
+
+
+def _fetch_via_webcache(url: str) -> str | None:
+    """Try AllOrigins proxy as second fallback."""
+    try:
+        proxy_url = f"https://api.allorigins.win/get?url={url}"
+        resp = httpx.get(proxy_url, timeout=20, follow_redirects=True)
+        if resp.status_code == 200:
+            data = resp.json()
+            content = data.get("contents", "")
+            if len(content) > 500:
+                return content
+    except Exception:
+        pass
+    return None
 
 
 def extract_article(url: str) -> dict:
     validate_url(url)
 
-    html = _fetch_html(url)
+    # Strategy 1: direct fetch
+    html = _fetch_direct(url)
+    jina_text = None
+
+    # Strategy 2: Jina Reader API (best fallback — extracts clean text directly)
+    if not html:
+        jina_text = _fetch_via_jina(url)
+
+    # Strategy 3: AllOrigins proxy
+    if not html and not jina_text:
+        html = _fetch_via_webcache(url)
+
+    if not html and not jina_text:
+        raise ValueError(
+            "Could not access this article. The site may be blocking all automated access.\n"
+            "Please try: apnews.com · theguardian.com · dw.com · reuters.com"
+        )
+
+    domain = urlparse(url).netloc.replace("www.", "")
+
+    # If Jina gave us clean text, use it directly (already extracted)
+    if jina_text and not html:
+        return _parse_jina_text(jina_text, url, domain)
+
+    # Parse HTML normally
     soup = BeautifulSoup(html, "lxml")
 
     for tag in soup(["script", "style", "nav", "footer", "header",
@@ -137,7 +153,6 @@ def extract_article(url: str) -> dict:
         h1 = soup.find("h1")
         title = h1.get_text(strip=True) if h1 else (soup.title.string if soup.title else "Unknown")
 
-    # Description
     description = ""
     for attr, val in [("property", "og:description"), ("name", "description")]:
         m = soup.find("meta", {attr: val})
@@ -145,21 +160,15 @@ def extract_article(url: str) -> dict:
             description = m["content"]
             break
 
-    # Image
     image = ""
     m = soup.find("meta", {"property": "og:image"})
     if m:
         image = m.get("content", "")
 
-    # Domain
-    domain = urlparse(url).netloc.replace("www.", "")
-
-    # Published date
     pub_date = ""
     for selector in [
         {"property": "article:published_time"},
         {"name": "article:published_time"},
-        {"name": "publishdate"},
         {"itemprop": "datePublished"},
     ]:
         m = soup.find("meta", selector)
@@ -173,10 +182,21 @@ def extract_article(url: str) -> dict:
 
     content = _extract_content(soup, url)
 
+    # If HTML parsing got nothing, try Jina as content fallback
+    if len(content) < 150:
+        jina_text = jina_text or _fetch_via_jina(url)
+        if jina_text:
+            parsed = _parse_jina_text(jina_text, url, domain)
+            if len(parsed.get("content", "")) > 150:
+                parsed["title"] = parsed["title"] or title
+                parsed["image"] = image
+                parsed["description"] = description
+                return parsed
+
     if len(content) < 150:
         raise ValueError(
-            "Could not extract article text. The page may be a video, gallery, or uses JavaScript rendering.\n"
-            f"Try these reliable sources: {GOOD_SITES}"
+            "Could not extract article text. The page may be a video or uses heavy JavaScript.\n"
+            "Try: apnews.com · theguardian.com · dw.com · reuters.com"
         )
 
     return {
@@ -191,17 +211,52 @@ def extract_article(url: str) -> dict:
     }
 
 
+def _parse_jina_text(text: str, url: str, domain: str) -> dict:
+    """Parse Jina Reader plain text output into article dict."""
+    lines = text.strip().split("\n")
+
+    # Jina format: first non-empty line is usually the title
+    title = ""
+    content_lines = []
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if not title and len(stripped) > 10:
+            # Skip Jina metadata lines
+            if stripped.startswith("Title:"):
+                title = stripped.replace("Title:", "").strip()
+            elif stripped.startswith("URL Source:") or stripped.startswith("Markdown Content:"):
+                continue
+            elif not title:
+                title = stripped
+        else:
+            content_lines.append(stripped)
+
+    content = _clean_text(" ".join(content_lines))
+
+    return {
+        "title": title,
+        "description": "",
+        "content": content,
+        "url": url,
+        "source": domain,
+        "image": "",
+        "published_at": "",
+        "word_count": len(content.split()),
+    }
+
+
 def _extract_content(soup: BeautifulSoup, url: str = "") -> str:
     domain = urlparse(url).netloc if url else ""
 
-    # Site-specific selectors first
     site_selectors = []
     if "aljazeera" in domain:
-        site_selectors = [".wysiwyg", ".article-p-wrapper", '[class*="article__body"]', "#article-body", ".main-article-body"]
+        site_selectors = [".wysiwyg", ".article-p-wrapper", '[class*="article__body"]', "#article-body"]
     elif "bbc" in domain:
         site_selectors = ["[data-component='text-block']", '[class*="RichTextComponentWrapper"]', ".story-body__inner"]
     elif "reuters" in domain:
-        site_selectors = ['[class*="article-body"]', '[class*="ArticleBody"]', ".StandardArticleBody_body"]
+        site_selectors = ['[class*="article-body"]', '[class*="ArticleBody"]']
     elif "theguardian" in domain:
         site_selectors = [".article-body-commercial-selector", ".content__article-body", '[class*="ArticleBody"]']
     elif "apnews" in domain:
@@ -216,26 +271,19 @@ def _extract_content(soup: BeautifulSoup, url: str = "") -> str:
             if len(text) > 150:
                 return text
 
-    # Generic selectors
-    generic_selectors = [
-        "[itemprop='articleBody']",
-        "article",
-        ".article-body", ".article__body", ".article-content", ".article_body",
-        ".story-body", ".story__body", ".story-content",
-        ".post-content", ".post-body", ".entry-content",
-        ".content-body", ".news-body", ".body-text",
-        ".ArticleBody", ".article-text",
-        "main",
-    ]
-
-    for sel in generic_selectors:
+    for sel in [
+        "[itemprop='articleBody']", "article",
+        ".article-body", ".article__body", ".article-content",
+        ".story-body", ".story__body", ".post-content",
+        ".entry-content", ".content-body", ".news-body",
+        ".ArticleBody", ".article-text", "main",
+    ]:
         el = soup.select_one(sel)
         if el:
             text = _clean_text(el.get_text(separator=" ", strip=True))
             if len(text) > 150:
                 return text
 
-    # Last resort: all substantial paragraphs
     paragraphs = soup.find_all("p")
     text = " ".join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 40)
     return _clean_text(text)
