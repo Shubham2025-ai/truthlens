@@ -3,122 +3,184 @@ from bs4 import BeautifulSoup
 import re
 from urllib.parse import urlparse
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Cache-Control": "max-age=0",
-}
+# Rotate user agents to avoid blocks
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+]
 
-# Section/listing pages that are NOT articles
-SECTION_PAGE_PATTERNS = [
-    r"^https?://[^/]+/?$",                          # homepage
-    r"/news/world-middle-east/?$",                   # BBC section pages
-    r"/news/world/?$",
-    r"/news/uk/?$",
+def _get_headers(url: str) -> dict:
+    domain = urlparse(url).netloc
+    base = {
+        "User-Agent": USER_AGENTS[hash(url) % len(USER_AGENTS)],
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Cache-Control": "max-age=0",
+    }
+    # Site-specific referer tricks
+    if "aljazeera" in domain:
+        base["Referer"] = "https://www.google.com/"
+    elif "reuters" in domain:
+        base["Referer"] = "https://www.google.com/"
+    return base
+
+# Patterns that indicate a section/listing page (not an article)
+SECTION_PATTERNS = [
+    r"^https?://[^/]+/?$",
+    r"^https?://[^/]+/news/?$",
+    r"^https?://[^/]+/news/world/?$",
+    r"^https?://[^/]+/news/world-[a-z-]+/?$",
+    r"^https?://[^/]+/world/?$",
     r"/topics/",
     r"/tag/",
+    r"/tags/",
     r"/category/",
+    r"/categories/",
     r"/section/",
-    r"/search",
+    r"/search[/?]",
+    r"/hub/[^/]+/?$",
+    r"/page/\d+/?$",
     r"google\.com/search",
-    r"/page/\d+",
 ]
+
+# Sites known to aggressively block scrapers
+BLOCKED_SITES = {
+    "nytimes.com": "The New York Times blocks automated access. Try Al Jazeera, AP News, or Reuters instead.",
+    "wsj.com": "Wall Street Journal is behind a paywall and blocks scraping. Try AP News or Reuters.",
+    "ft.com": "Financial Times blocks automated access. Try Reuters or AP News.",
+    "washingtonpost.com": "Washington Post blocks scraping. Try AP News or Reuters.",
+    "bloomberg.com": "Bloomberg blocks automated access. Try Reuters or AP News.",
+}
 
 
 def validate_url(url: str) -> None:
-    """Raise a helpful error if URL is a section/listing page not an article."""
-    for pattern in SECTION_PAGE_PATTERNS:
+    """Raise a helpful error for section pages or known-blocked sites."""
+    parsed = urlparse(url)
+    domain = parsed.netloc.replace("www.", "")
+
+    # Check blocked sites
+    for blocked_domain, msg in BLOCKED_SITES.items():
+        if blocked_domain in domain:
+            raise ValueError(msg)
+
+    # Check section/listing patterns
+    for pattern in SECTION_PATTERNS:
         if re.search(pattern, url, re.IGNORECASE):
             raise ValueError(
-                "This looks like a news section page, not a specific article. "
-                "Please paste the URL of an individual news article. "
-                "Example: https://www.bbc.com/news/articles/c1234abcd (not /news/world-middle-east)"
+                "This looks like a section or homepage, not a specific article.\n"
+                "Please paste the URL of one individual news article.\n\n"
+                "Good examples:\n"
+                "• https://apnews.com/article/israel-iran-...\n"
+                "• https://www.aljazeera.com/news/2024/10/15/some-article-title\n"
+                "• https://www.reuters.com/world/middle-east/article-name-2024-10-15/"
             )
 
 
 def extract_article(url: str) -> dict:
     """Scrape and extract article content from a URL."""
 
-    # Validate it's an article URL first
     validate_url(url)
 
-    try:
-        resp = httpx.get(url, headers=HEADERS, timeout=20, follow_redirects=True)
-        resp.raise_for_status()
-        html = resp.text
-    except httpx.HTTPStatusError as e:
-        status = e.response.status_code
-        if status == 404:
-            raise ValueError(
-                f"Article not found (404). The URL may be broken or this is a section page, not an article. "
-                f"Try copying the URL directly from a specific news article page."
-            )
-        elif status == 403:
-            raise ValueError(
-                f"Access denied (403). This site blocks automated access. "
-                f"Try Al Jazeera, Reuters, or AP News instead."
-            )
-        elif status == 429:
-            raise ValueError("Too many requests to this site. Please wait a moment and try again.")
-        else:
-            raise ValueError(f"Could not fetch article (HTTP {status}). Try a different URL.")
-    except httpx.TimeoutException:
-        raise ValueError("Request timed out. The site may be slow — please try again.")
-    except Exception as e:
-        raise ValueError(f"Could not fetch URL: {str(e)}")
+    headers = _get_headers(url)
 
+    try:
+        resp = httpx.get(url, headers=headers, timeout=25, follow_redirects=True)
+    except httpx.TimeoutException:
+        raise ValueError("Request timed out. The site may be slow — please try again in a moment.")
+    except Exception as e:
+        raise ValueError(f"Could not reach this URL: {str(e)}")
+
+    # Handle HTTP errors with helpful messages
+    if resp.status_code == 404:
+        raise ValueError(
+            "Article not found (404). This URL doesn't exist or has been removed.\n"
+            "Please check the URL and try again with a current article."
+        )
+    elif resp.status_code == 403:
+        domain = urlparse(url).netloc
+        raise ValueError(
+            f"{domain} is blocking access to this article.\n"
+            "Try one of these that work well:\n"
+            "• apnews.com\n"
+            "• www.reuters.com\n"
+            "• www.theguardian.com\n"
+            "• www.dw.com"
+        )
+    elif resp.status_code == 429:
+        raise ValueError("Too many requests to this site. Wait 30 seconds and try again.")
+    elif resp.status_code >= 400:
+        raise ValueError(f"Could not fetch article (HTTP {resp.status_code}). Try a different URL.")
+
+    html = resp.text
     soup = BeautifulSoup(html, "lxml")
 
-    # Remove noise
-    for tag in soup(["script", "style", "nav", "footer", "header", "aside", "iframe", "noscript"]):
+    # Remove noise elements
+    for tag in soup(["script", "style", "nav", "footer", "header",
+                     "aside", "iframe", "noscript", "figure", "figcaption"]):
         tag.decompose()
 
     # Title
     title = ""
-    og_title = soup.find("meta", property="og:title")
-    if og_title:
-        title = og_title.get("content", "")
+    for meta_attr in [("property", "og:title"), ("name", "twitter:title")]:
+        m = soup.find("meta", {meta_attr[0]: meta_attr[1]})
+        if m and m.get("content"):
+            title = m["content"]
+            break
     if not title:
         h1 = soup.find("h1")
         title = h1.get_text(strip=True) if h1 else (soup.title.string if soup.title else "Unknown")
 
     # Description
     description = ""
-    og_desc = soup.find("meta", property="og:description")
-    if og_desc:
-        description = og_desc.get("content", "")
+    m = soup.find("meta", {"property": "og:description"}) or soup.find("meta", {"name": "description"})
+    if m:
+        description = m.get("content", "")
 
     # Image
     image = ""
-    og_img = soup.find("meta", property="og:image")
-    if og_img:
-        image = og_img.get("content", "")
+    m = soup.find("meta", {"property": "og:image"})
+    if m:
+        image = m.get("content", "")
 
-    # Source name
+    # Source
     domain = urlparse(url).netloc.replace("www.", "")
 
     # Published date
     pub_date = ""
-    date_meta = (
-        soup.find("meta", {"name": "article:published_time"}) or
-        soup.find("meta", property="article:published_time") or
-        soup.find("time")
-    )
-    if date_meta:
-        pub_date = date_meta.get("content", "") or date_meta.get("datetime", "")
+    for selector in [
+        {"property": "article:published_time"},
+        {"name": "article:published_time"},
+        {"name": "publishdate"},
+        {"itemprop": "datePublished"},
+    ]:
+        m = soup.find("meta", selector)
+        if m and m.get("content"):
+            pub_date = m["content"]
+            break
+    if not pub_date:
+        t = soup.find("time")
+        if t:
+            pub_date = t.get("datetime", "")
 
-    # Content extraction
-    content = _extract_content(soup)
+    # Content
+    content = _extract_content(soup, url)
 
-    if len(content) < 100:
+    if len(content) < 150:
         raise ValueError(
-            "Could not extract article text from this page. "
-            "This may be a homepage, video page, or a site that blocks scraping. "
-            "Try: Al Jazeera (aljazeera.com), Reuters (reuters.com), or AP News (apnews.com)."
+            "Could not extract article text from this page.\n"
+            "This site may block scraping, or the page may be a video/gallery.\n\n"
+            "Sites that work well:\n"
+            "• apnews.com — paste any article URL\n"
+            "• www.theguardian.com — paste any article URL\n"
+            "• www.dw.com — paste any article URL\n"
+            "• www.reuters.com — paste any article URL"
         )
 
     return {
@@ -133,37 +195,61 @@ def extract_article(url: str) -> dict:
     }
 
 
-def _extract_content(soup: BeautifulSoup) -> str:
-    """Extract main article text with site-specific selectors."""
+def _extract_content(soup: BeautifulSoup, url: str = "") -> str:
+    """Extract main article text with site-specific and generic selectors."""
+    domain = urlparse(url).netloc if url else ""
+
+    # Al Jazeera specific
+    if "aljazeera" in domain:
+        for sel in [".wysiwyg", ".article-p-wrapper", '[class*="article__body"]',
+                    ".main-article-body", "#article-body"]:
+            el = soup.select_one(sel)
+            if el:
+                text = _clean_text(el.get_text(separator=" ", strip=True))
+                if len(text) > 150:
+                    return text
 
     # BBC specific
-    for selector in ["[data-component='text-block']", ".ssrcss-uf6wea-RichTextComponentWrapper",
-                     ".article__body-content", "#main-content article"]:
-        els = soup.select(selector)
+    if "bbc" in domain:
+        els = soup.select("[data-component='text-block']")
         if els:
-            text = " ".join(el.get_text(separator=" ", strip=True) for el in els)
-            if len(text) > 200:
+            text = " ".join(e.get_text(separator=" ", strip=True) for e in els)
+            if len(text) > 150:
                 return _clean_text(text)
 
-    # Generic article tag
+    # Reuters specific
+    if "reuters" in domain:
+        for sel in ['[class*="article-body"]', '[class*="ArticleBody"]', ".StandardArticleBody_body"]:
+            el = soup.select_one(sel)
+            if el:
+                text = _clean_text(el.get_text(separator=" ", strip=True))
+                if len(text) > 150:
+                    return text
+
+    # Generic: article tag
     article = soup.find("article")
     if article:
-        return _clean_text(article.get_text(separator=" ", strip=True))
+        text = _clean_text(article.get_text(separator=" ", strip=True))
+        if len(text) > 150:
+            return text
 
-    # Common content containers
+    # Generic content containers
     for selector in [
-        "main", ".article-body", ".story-body", ".post-content",
-        ".entry-content", "#article-body", ".news-body", ".content-body",
-        ".article__body", ".story__body", ".body-text", ".post-body",
-        "[itemprop='articleBody']", ".ArticleBody", ".article-content",
+        "[itemprop='articleBody']",
+        ".article-body", ".article__body", ".article-content",
+        ".story-body", ".story__body", ".story-content",
+        ".post-content", ".post-body", ".entry-content",
+        ".content-body", ".news-body", ".body-text",
+        ".ArticleBody", ".article_body",
+        "main article", "#article-body", "#story-body",
     ]:
         el = soup.select_one(selector)
         if el:
             text = _clean_text(el.get_text(separator=" ", strip=True))
-            if len(text) > 200:
+            if len(text) > 150:
                 return text
 
-    # Fallback: all paragraphs
+    # Last resort: all substantial paragraphs
     paragraphs = soup.find_all("p")
     text = " ".join(
         p.get_text(strip=True) for p in paragraphs

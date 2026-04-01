@@ -13,9 +13,9 @@ export default function HomePage() {
   const navigate = useNavigate()
 
   const DEMO_URLS = [
-    { label: 'Al Jazeera', url: 'https://www.aljazeera.com/news/2025/10/1/middle-east-crisis-latest' },
-    { label: 'AP News', url: 'https://apnews.com/article/israel-iran' },
-    { label: 'Reuters', url: 'https://www.reuters.com/world/middle-east/israel-iran-conflict' },
+    { label: 'AP News', url: 'https://apnews.com/article/israel-iran-nuclear-deal-trump-2025' },
+    { label: 'The Guardian', url: 'https://www.theguardian.com/world/israel' },
+    { label: 'DW News', url: 'https://www.dw.com/en/middle-east' },
   ]
 
   const handleAnalyze = async () => {
@@ -114,7 +114,7 @@ export default function HomePage() {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleAnalyze()}
-                placeholder="https://bbc.com/news/..."
+                placeholder="Paste a specific article URL (e.g. apnews.com/article/...)"
                 className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder-white/25 text-sm outline-none focus:border-accent/50 focus:bg-white/8 transition-all font-mono"
               />
               <button
