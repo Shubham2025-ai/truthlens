@@ -13,9 +13,9 @@ export default function HomePage() {
   const navigate = useNavigate()
 
   const DEMO_URLS = [
-    'https://www.bbc.com/news/world-middle-east',
-    'https://www.aljazeera.com/news/',
-    'https://www.reuters.com/world/',
+    { label: 'Al Jazeera', url: 'https://www.aljazeera.com/news/2025/10/1/middle-east-crisis-latest' },
+    { label: 'AP News', url: 'https://apnews.com/article/israel-iran' },
+    { label: 'Reuters', url: 'https://www.reuters.com/world/middle-east/israel-iran-conflict' },
   ]
 
   const handleAnalyze = async () => {
@@ -148,13 +148,13 @@ export default function HomePage() {
           {mode === 'url' && (
             <div className="mt-4 flex flex-wrap gap-2 items-center">
               <span className="text-xs text-white/25 font-mono">Try:</span>
-              {DEMO_URLS.map((u, i) => (
+              {DEMO_URLS.map((d, i) => (
                 <button
                   key={i}
-                  onClick={() => setInput(u)}
+                  onClick={() => setInput(d.url)}
                   className="text-xs font-mono text-white/35 hover:text-accent/70 border border-white/10 hover:border-accent/30 rounded-md px-2.5 py-1 transition-all"
                 >
-                  {new URL(u).hostname.replace('www.', '')}
+                  {d.label}
                 </button>
               ))}
             </div>
