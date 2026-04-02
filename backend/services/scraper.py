@@ -2,7 +2,7 @@ import httpx
 from bs4 import BeautifulSoup
 import re
 import json
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 import time
 
 USER_AGENTS = [
@@ -14,7 +14,7 @@ USER_AGENTS = [
 
 SECTION_PATTERNS = [
     r"^https?://[^/]+/?$",
-    r"^https?://[^/]+/(news|world|politics|topics|tag|tags|category|section|hub|search|business|technology|science|health|entertainment)/?$",
+    r"^https?://[^/]+/(news|world|politics|topics|tag|tags|category|section|hub|search|business|technology)/?$",
     r"/topics/[^/]+/?$",
     r"/tag/[^/]+/?$",
     r"/category/[^/]+/?$",
@@ -55,172 +55,100 @@ def _headers(ua: str, referer: str = "https://www.google.com/") -> dict:
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
         "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
     }
 
 
-def _try_reuters_json(url: str) -> str | None:
-    """
-    Reuters embeds article JSON-LD in the page.
-    Try fetching the page and extracting structured data directly.
-    Also try Reuters' internal API pattern.
-    """
-    domain = urlparse(url).netloc
-    if "reuters" not in domain:
-        return None
-
-    # Reuters specific headers that mimic a real browser better
-    reuters_headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Cache-Control": "max-age=0",
-        "Referer": "https://www.google.com/search?q=reuters+news",
-        "Sec-Ch-Ua": '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "cross-site",
-        "Sec-Fetch-User": "?1",
-        "Upgrade-Insecure-Requests": "1",
-    }
-
+def _try_jina(url: str) -> str | None:
+    """Jina Reader API — free, no key, bypasses most paywalls."""
     try:
-        resp = httpx.get(url, headers=reuters_headers, timeout=25,
-                         follow_redirects=True)
-        if resp.status_code == 200 and len(resp.text) > 500:
-            html = resp.text
-            soup = BeautifulSoup(html, "lxml")
-
-            # Try JSON-LD structured data first (most reliable for Reuters)
-            for script in soup.find_all("script", {"type": "application/ld+json"}):
-                try:
-                    data = json.loads(script.string or "")
-                    # Handle both single object and list
-                    items = data if isinstance(data, list) else [data]
-                    for item in items:
-                        if item.get("@type") in ("NewsArticle", "Article", "ReportageNewsArticle"):
-                            body = item.get("articleBody", "")
-                            if len(body) > 200:
-                                return body
-                except Exception:
-                    continue
-
-            # Try Next.js __NEXT_DATA__ embedded JSON
-            next_data = soup.find("script", {"id": "__NEXT_DATA__"})
-            if next_data:
-                try:
-                    nd = json.loads(next_data.string or "")
-                    # Traverse the Next.js data structure for article content
-                    story = (nd.get("props", {})
-                               .get("pageProps", {})
-                               .get("story", {}))
-                    if not story:
-                        # Try alternate path
-                        story = (nd.get("props", {})
-                                   .get("initialState", {})
-                                   .get("story", {})
-                                   .get("story", {}))
-
-                    # Extract body from content_elements
-                    elements = story.get("content_elements", [])
-                    if not elements:
-                        elements = story.get("items", [])
-
-                    texts = []
-                    for el in elements:
-                        if isinstance(el, dict):
-                            if el.get("type") == "text":
-                                texts.append(el.get("content", ""))
-                            elif el.get("type") == "paragraph":
-                                texts.append(el.get("text", "") or el.get("content", ""))
-                    text = " ".join(t for t in texts if t)
-                    if len(text) > 200:
-                        return _clean_text(text)
-                except Exception:
-                    pass
-
-            # Return full HTML for normal parsing fallback
-            return html
+        jina_url = f"https://r.jina.ai/{url}"
+        resp = httpx.get(
+            jina_url,
+            headers={
+                "User-Agent": USER_AGENTS[0],
+                "Accept": "text/plain",
+                "X-Return-Format": "text",
+                "X-No-Cache": "true",
+            },
+            timeout=30,
+            follow_redirects=True,
+        )
+        if resp.status_code == 200:
+            text = resp.text.strip()
+            # Jina returns markdown — strip the header metadata lines
+            lines = text.split("\n")
+            content_lines = []
+            skip_header = True
+            for line in lines:
+                if skip_header:
+                    if line.startswith("Title:") or line.startswith("URL Source:") or \
+                       line.startswith("Published Time:") or line.startswith("Markdown Content:"):
+                        continue
+                    if line.strip() == "" and not content_lines:
+                        continue
+                    skip_header = False
+                content_lines.append(line)
+            content = "\n".join(content_lines).strip()
+            # Remove markdown formatting
+            content = re.sub(r"#{1,6}\s+", "", content)
+            content = re.sub(r"\*\*(.+?)\*\*", r"\1", content)
+            content = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", content)
+            content = re.sub(r"\n{3,}", "\n\n", content)
+            content = _clean_text(content)
+            if len(content) > 300:
+                return content
     except Exception:
         pass
     return None
 
 
-def _fetch_html(url: str) -> str:
-    """Multi-strategy fetch with site-specific handling."""
+def _try_allorigins(url: str) -> str | None:
+    """AllOrigins proxy — free CORS proxy."""
+    try:
+        proxy = f"https://api.allorigins.win/get?url={quote(url)}"
+        resp = httpx.get(proxy, timeout=20, follow_redirects=True)
+        if resp.status_code == 200:
+            data = resp.json()
+            html = data.get("contents", "")
+            if len(html) > 500:
+                return html
+    except Exception:
+        pass
+    return None
+
+
+def _try_direct(url: str) -> str | None:
+    """Direct fetch with multiple user agents."""
     domain = urlparse(url).netloc
 
-    # Reuters: use dedicated handler
-    if "reuters" in domain:
-        result = _try_reuters_json(url)
-        if result:
-            return result
-
-    strategies = [
+    attempts = [
         _headers(USER_AGENTS[0]),
         _headers(USER_AGENTS[1], referer=f"https://{domain}/"),
         _headers(USER_AGENTS[2]),
-        _headers(USER_AGENTS[3], referer="https://news.google.com/"),
-        # Minimal headers — sometimes less is more
-        {"User-Agent": USER_AGENTS[0], "Accept": "text/html,*/*"},
+        {
+            "User-Agent": USER_AGENTS[0],
+            "Accept": "text/html,*/*",
+            "Referer": "https://www.google.com/",
+        },
     ]
 
-    last_status = None
-    for i, hdrs in enumerate(strategies):
+    for i, hdrs in enumerate(attempts):
         if i > 0:
-            time.sleep(0.4)
+            time.sleep(0.3)
         try:
-            resp = httpx.get(url, headers=hdrs, timeout=25, follow_redirects=True)
+            resp = httpx.get(url, headers=hdrs, timeout=20, follow_redirects=True)
             if resp.status_code == 200 and len(resp.text) > 500:
                 return resp.text
-            last_status = resp.status_code
-            if resp.status_code in (401, 410, 451):
-                break
-        except httpx.TimeoutException:
-            raise ValueError("Request timed out. Please try again.")
-        except Exception as e:
-            if i == len(strategies) - 1:
-                raise ValueError(f"Could not reach URL: {str(e)}")
-
-    # All failed — return stub for Groq source-reputation fallback
-    return ""
+        except Exception:
+            continue
+    return None
 
 
-def extract_article(url: str) -> dict:
-    validate_url(url)
+def _extract_from_html(html: str, url: str) -> tuple[str, str, str, str, str]:
+    """Extract title, description, image, pub_date, content from HTML."""
+    soup = BeautifulSoup(html, "lxml")
 
-    domain = urlparse(url).netloc.replace("www.", "")
-
-    html_or_text = _fetch_html(url)
-
-    # If we got clean article text back directly (e.g. from Reuters JSON-LD)
-    # and it's not HTML, use it directly
-    if html_or_text and not html_or_text.strip().startswith("<"):
-        content = _clean_text(html_or_text)
-        title = _title_from_url(url)
-        return {
-            "title": title,
-            "description": "",
-            "content": content,
-            "url": url,
-            "source": domain,
-            "image": "",
-            "published_at": "",
-            "word_count": len(content.split()),
-            "scrape_failed": False,
-        }
-
-    if not html_or_text:
-        # Graceful fallback — let Groq analyze from source reputation
-        return _stub_result(url, domain)
-
-    soup = BeautifulSoup(html_or_text, "lxml")
-
-    for tag in soup(["script", "style", "nav", "footer", "header",
-                     "aside", "iframe", "noscript"]):
+    for tag in soup(["script", "style", "nav", "footer", "header", "aside", "iframe", "noscript"]):
         tag.decompose()
 
     # Title
@@ -233,7 +161,7 @@ def extract_article(url: str) -> dict:
     if not title:
         h1 = soup.find("h1")
         title = h1.get_text(strip=True) if h1 else (
-            soup.title.string.strip() if soup.title else _title_from_url(url))
+            soup.title.string.strip() if soup.title else "")
 
     # Description
     description = ""
@@ -249,15 +177,10 @@ def extract_article(url: str) -> dict:
     if m:
         image = m.get("content", "")
 
-    # Published date
+    # Date
     pub_date = ""
-    for selector in [
-        {"property": "article:published_time"},
-        {"name": "article:published_time"},
-        {"itemprop": "datePublished"},
-        {"name": "publishdate"},
-    ]:
-        m = soup.find("meta", selector)
+    for sel in [{"property": "article:published_time"}, {"name": "article:published_time"}, {"itemprop": "datePublished"}]:
+        m = soup.find("meta", sel)
         if m and m.get("content"):
             pub_date = m["content"]
             break
@@ -266,14 +189,56 @@ def extract_article(url: str) -> dict:
         if t:
             pub_date = t.get("datetime", "")
 
+    # Content
     content = _extract_content(soup, url)
 
-    # If content too short, use description as fallback
-    if len(content) < 150 and description:
-        content = f"{title}. {description}"
+    return title, description, image, pub_date, content
 
-    if len(content) < 100:
-        return _stub_result(url, domain, title=title, image=image)
+
+def extract_article(url: str) -> dict:
+    validate_url(url)
+    domain = urlparse(url).netloc.replace("www.", "")
+
+    title = ""
+    description = ""
+    image = ""
+    pub_date = ""
+    content = ""
+
+    # Strategy 1: Direct fetch
+    html = _try_direct(url)
+    if html:
+        title, description, image, pub_date, content = _extract_from_html(html, url)
+
+    # Strategy 2: Jina Reader (best for blocked sites like Reuters)
+    if len(content) < 300:
+        jina_content = _try_jina(url)
+        if jina_content and len(jina_content) > len(content):
+            content = jina_content
+            # If we didn't get title from HTML, try to extract from Jina output
+            if not title:
+                title = _title_from_url(url)
+
+    # Strategy 3: AllOrigins proxy
+    if len(content) < 300:
+        proxy_html = _try_allorigins(url)
+        if proxy_html:
+            pt, pd, pi, pp, pc = _extract_from_html(proxy_html, url)
+            if len(pc) > len(content):
+                content = pc
+                title = title or pt
+                description = description or pd
+                image = image or pi
+                pub_date = pub_date or pp
+
+    # If still no title, derive from URL
+    if not title:
+        title = _title_from_url(url)
+
+    # Final fallback — stub for Groq source-reputation
+    scrape_failed = len(content) < 200
+    if scrape_failed:
+        content = f"URL: {url}\nSource: {domain}\nTitle: {title}\nDescription: {description}"
 
     return {
         "title": title.strip(),
@@ -283,31 +248,14 @@ def extract_article(url: str) -> dict:
         "source": domain,
         "image": image,
         "published_at": pub_date,
-        "word_count": len(content.split()),
-        "scrape_failed": False,
-    }
-
-
-def _stub_result(url: str, domain: str, title: str = "", image: str = "") -> dict:
-    """Graceful fallback — Groq will analyze from source reputation."""
-    return {
-        "title": title or _title_from_url(url),
-        "description": "",
-        "content": f"URL: {url}\nSource: {domain}\nTitle: {title}",
-        "url": url,
-        "source": domain,
-        "image": image,
-        "published_at": "",
-        "word_count": 0,
-        "scrape_failed": True,
+        "word_count": len(content.split()) if not scrape_failed else 0,
+        "scrape_failed": scrape_failed,
     }
 
 
 def _title_from_url(url: str) -> str:
-    """Extract a readable title from the URL slug."""
     path = urlparse(url).path
     slug = path.rstrip("/").split("/")[-1]
-    # Remove date patterns and IDs
     slug = re.sub(r"-\d{4}-\d{2}-\d{2}$", "", slug)
     slug = re.sub(r"-[a-z0-9]{8,}$", "", slug)
     return slug.replace("-", " ").title() if slug else "Article"
@@ -316,91 +264,98 @@ def _title_from_url(url: str) -> str:
 def _extract_content(soup: BeautifulSoup, url: str = "") -> str:
     domain = urlparse(url).netloc if url else ""
 
-    # Reuters specific
-    if "reuters" in domain:
-        # Try JSON-LD first
-        for script in soup.find_all("script", {"type": "application/ld+json"}):
-            try:
-                data = json.loads(script.string or "")
-                items = data if isinstance(data, list) else [data]
-                for item in items:
+    # Try JSON-LD structured data first (works for Reuters, AP, Guardian)
+    for script in soup.find_all("script", {"type": "application/ld+json"}):
+        try:
+            data = json.loads(script.string or "")
+            items = data if isinstance(data, list) else [data]
+            for item in items:
+                if item.get("@type") in ("NewsArticle", "Article", "ReportageNewsArticle"):
                     body = item.get("articleBody", "")
-                    if len(body) > 200:
+                    if len(body) > 300:
                         return _clean_text(body)
-            except Exception:
-                pass
-        # Reuters HTML selectors
+        except Exception:
+            pass
+
+    # Try Next.js __NEXT_DATA__
+    next_data = soup.find("script", {"id": "__NEXT_DATA__"})
+    if next_data:
+        try:
+            nd = json.loads(next_data.string or "")
+            story = (nd.get("props", {}).get("pageProps", {}).get("story", {}))
+            elements = story.get("content_elements", []) or story.get("items", [])
+            texts = []
+            for el in elements:
+                if isinstance(el, dict):
+                    t = el.get("content") or el.get("text") or ""
+                    if t:
+                        texts.append(t)
+            text = _clean_text(" ".join(texts))
+            if len(text) > 300:
+                return text
+        except Exception:
+            pass
+
+    # Site-specific selectors
+    if "reuters" in domain:
         for sel in ['[class*="article-body"]', '[class*="ArticleBody"]',
-                    '[class*="Body__content"]', '[class*="StandardArticleBody"]',
-                    '[data-testid="paragraph-0"]', '.article-body__content']:
+                    '[class*="Body__content"]', '[data-testid*="paragraph"]']:
             els = soup.select(sel)
             if els:
                 text = _clean_text(" ".join(e.get_text(" ", strip=True) for e in els))
-                if len(text) > 150:
+                if len(text) > 200:
                     return text
 
-    # Al Jazeera
     if "aljazeera" in domain:
-        for sel in [".wysiwyg", ".article-p-wrapper", '[class*="article__body"]',
-                    "#article-body", ".main-article-body"]:
+        for sel in [".wysiwyg", ".article-p-wrapper", '[class*="article__body"]', "#article-body"]:
             el = soup.select_one(sel)
             if el:
                 text = _clean_text(el.get_text(" ", strip=True))
-                if len(text) > 150:
+                if len(text) > 200:
                     return text
 
-    # BBC
     if "bbc" in domain:
         els = soup.select("[data-component='text-block']")
         if els:
             text = _clean_text(" ".join(e.get_text(" ", strip=True) for e in els))
-            if len(text) > 150:
+            if len(text) > 200:
                 return text
 
-    # Guardian
     if "theguardian" in domain:
-        for sel in [".article-body-commercial-selector", ".content__article-body",
-                    '[class*="ArticleBody"]', '[data-gu-name="body"]']:
+        for sel in [".article-body-commercial-selector", ".content__article-body", '[data-gu-name="body"]']:
             el = soup.select_one(sel)
             if el:
                 text = _clean_text(el.get_text(" ", strip=True))
-                if len(text) > 150:
+                if len(text) > 200:
                     return text
 
-    # AP News
     if "apnews" in domain:
-        for sel in [".Article", ".RichTextStoryBody", '[class*="Article-"]',
-                    ".article-body", '[data-key="article"]']:
+        for sel in [".Article", ".RichTextStoryBody", '[class*="Article-"]', '[data-key="article"]']:
             el = soup.select_one(sel)
             if el:
                 text = _clean_text(el.get_text(" ", strip=True))
-                if len(text) > 150:
+                if len(text) > 200:
                     return text
 
-    # DW
     if "dw" in domain:
-        for sel in [".longText", ".article-content", "#bodytext", ".content-area"]:
+        for sel in [".longText", ".article-content", "#bodytext"]:
             el = soup.select_one(sel)
             if el:
                 text = _clean_text(el.get_text(" ", strip=True))
-                if len(text) > 150:
+                if len(text) > 200:
                     return text
 
-    # Generic fallbacks
-    for sel in [
-        "[itemprop='articleBody']", "article",
-        ".article-body", ".article__body", ".article-content",
-        ".story-body", ".story__body", ".post-content",
-        ".entry-content", ".content-body", ".news-body",
-        ".ArticleBody", ".article-text", "#content", "main",
-    ]:
+    # Generic
+    for sel in ["[itemprop='articleBody']", "article", ".article-body",
+                ".article__body", ".story-body", ".post-content",
+                ".entry-content", ".content-body", "main"]:
         el = soup.select_one(sel)
         if el:
             text = _clean_text(el.get_text(" ", strip=True))
-            if len(text) > 150:
+            if len(text) > 200:
                 return text
 
-    # Last resort: all paragraphs
+    # Last resort: paragraphs
     paras = soup.find_all("p")
     text = " ".join(p.get_text(strip=True) for p in paras if len(p.get_text(strip=True)) > 40)
     return _clean_text(text)
