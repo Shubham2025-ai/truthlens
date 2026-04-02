@@ -10,9 +10,9 @@ import FactCheckPanel from '../components/FactCheckPanel.jsx'
 import ELI15Panel from '../components/ELI15Panel.jsx'
 import RelatedSources from '../components/RelatedSources.jsx'
 import MediaFingerprint from '../components/MediaFingerprint.jsx'
-import SentenceHeatmap from '../components/SentenceHeatmap.jsx'
 import ShareCard from '../components/ShareCard.jsx'
 import QuickStats from '../components/QuickStats.jsx'
+import MLInsights from '../components/MLInsights.jsx'
 
 function scoreColor(s) { return s >= 75 ? '#2ecc71' : s >= 50 ? '#f39c12' : s >= 30 ? '#e67e22' : '#e74c3c' }
 function scoreLabel(s) { return s >= 80 ? 'High Credibility' : s >= 60 ? 'Moderate Credibility' : s >= 40 ? 'Low Credibility' : 'Very Low Credibility' }
@@ -127,13 +127,6 @@ export default function ResultPage() {
           <ManipulationPanel manipulation={data.manipulation} />
         </motion.div>
 
-        {/* Sentence Heatmap — only when we have real content */}
-        {!data.scrape_failed && data.content && data.content.length > 200 && (
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="mb-4">
-            <SentenceHeatmap content={data.content} />
-          </motion.div>
-        )}
-
         {/* Fact Check + ELI15 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
@@ -153,6 +146,13 @@ export default function ResultPage() {
             <ShareCard data={data} />
           </motion.div>
         </div>
+
+        {/* ML Model Insights */}
+        {data.ml_analysis?.available && (
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.52 }} className="mb-4">
+            <MLInsights ml={data.ml_analysis} />
+          </motion.div>
+        )}
 
         {/* Related sources */}
         {data.related_sources?.length > 0 && (
