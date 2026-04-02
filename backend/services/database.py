@@ -39,7 +39,7 @@ def get_recent_analyses(limit: int = 20) -> list:
         return []
     try:
         result = supabase.table("analyses") \
-            .select("id, url, title, source, credibility_score, bias_label, manipulation_level, conflict_region, analyzed_at") \
+            .select("id, url, title, source, credibility_score, bias_label, manipulation_level, conflict_region, analyzed_at, summary_eli15") \
             .order("analyzed_at", desc=True) \
             .limit(limit) \
             .execute()
@@ -62,6 +62,17 @@ def get_analysis_by_id(analysis_id: str) -> dict | None:
     except Exception as e:
         print(f"Supabase get by id error: {e}")
         return None
+
+
+def delete_analysis(analysis_id: str) -> bool:
+    if not supabase:
+        return False
+    try:
+        supabase.table("analyses").delete().eq("id", analysis_id).execute()
+        return True
+    except Exception as e:
+        print(f"Supabase delete error: {e}")
+        return False
 
 
 def get_analysis_by_url(url: str) -> dict | None:

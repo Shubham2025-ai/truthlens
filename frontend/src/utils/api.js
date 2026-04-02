@@ -12,3 +12,6 @@ export const analyzeText = (text, title = 'Pasted Text') => api.post('/analyze/t
 export const compareUrls = (urls) => api.post('/compare', { urls })
 export const getHistory = (limit = 20) => api.get(`/history?limit=${limit}`)
 export const getStats = () => api.get('/stats')
+
+export const deleteAnalysis = (id) => api.delete(`/analysis/${id}`)
+export const getAnalysisById = (id) => api.get(`/analysis/${id}`)
