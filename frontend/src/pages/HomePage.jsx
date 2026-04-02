@@ -72,8 +72,10 @@ export default function HomePage() {
     try {
       let res
       if (mode === 'url') {
-        if (!input.startsWith('http')) { toast.error('Enter a valid URL starting with https://'); setLoading(false); return }
-        res = await analyzeUrl(input.trim())
+        // Clean the URL - strip hidden chars, emoji, spaces
+        const cleanUrl = input.trim().replace(/^[^h]*(https?:\/\/)/i, '$1').trim()
+        if (!cleanUrl.startsWith('http')) { toast.error('Please paste a valid article URL (starts with https://)'); setLoading(false); return }
+        res = await analyzeUrl(cleanUrl)
       } else {
         if (input.trim().length < 100) { toast.error('Paste at least 100 characters of article text'); setLoading(false); return }
         res = await analyzeText(input.trim())
