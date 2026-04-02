@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from services.scraper import extract_article
+from services.scraper import extract_article, extract_from_html
 from services.groq_service import analyze_article_with_groq, simplify_text
 from services.database import save_analysis, get_analysis_by_url
 from services.news_service import search_same_story
@@ -14,91 +14,46 @@ class AnalyzeRequest(BaseModel):
     use_cache: bool = True
 
 
+class AnalyzeHtmlRequest(BaseModel):
+    url: str
+    html: str       # Raw HTML sent from the user's browser
+    use_cache: bool = True
+
+
 class TextAnalyzeRequest(BaseModel):
     text: str
     title: str = "Pasted Text"
     source: str = "Unknown"
 
 
-def _merge_ml_into_result(result: dict, ml: dict) -> dict:
-    """
-    Merge real ML model scores into the Groq result.
-    ML scores are used to VALIDATE and ENHANCE Groq's output,
-    not replace it entirely — best of both worlds.
-    """
+def _merge_ml(result: dict, ml: dict) -> dict:
     if not ml.get("available"):
         result["ml_analysis"] = {"available": False}
         return result
-
     result["ml_analysis"] = ml
-
-    # Override manipulation score with ML-computed value if available
-    if ml.get("ml_manipulation_score") is not None:
-        if "manipulation" in result and isinstance(result["manipulation"], dict):
-            groq_score = result["manipulation"].get("score", 0)
-            ml_score   = ml["ml_manipulation_score"]
-            # Blend: 60% Groq (context-aware) + 40% ML (model-based)
-            blended = round(groq_score * 0.6 + ml_score * 0.4)
-            result["manipulation"]["score"] = blended
-            result["manipulation"]["ml_score"] = ml_score
-
-            # Update level based on blended score
-            if blended >= 60:
-                result["manipulation"]["level"] = "High"
-            elif blended >= 35:
-                result["manipulation"]["level"] = "Medium"
-            else:
-                result["manipulation"]["level"] = "Low"
-
-    # Add ML political bias as a secondary signal alongside Groq bias
-    if ml.get("political_bias"):
-        if "bias" in result and isinstance(result["bias"], dict):
-            result["bias"]["ml_political"] = ml["political_bias"]
-            # If ML and Groq strongly agree on direction, boost confidence
-            pb = ml["political_bias"]
-            groq_label = result["bias"].get("label", "").lower()
-            ml_dominant = pb.get("dominant", "center")
-            if ("left" in groq_label and ml_dominant == "left") or \
-               ("right" in groq_label and ml_dominant == "right") or \
-               (groq_label in ("neutral", "center") and ml_dominant == "center"):
-                result["bias"]["confidence"] = min(99, result["bias"].get("confidence", 70) + 10)
-                result["bias"]["ml_validated"] = True
-
-    # Add dominant emotion to manipulation panel
-    if ml.get("emotions"):
-        if "manipulation" in result and isinstance(result["manipulation"], dict):
-            result["manipulation"]["dominant_emotion"] = ml["emotions"]["dominant"]
-            result["manipulation"]["dominant_emotion_score"] = ml["emotions"]["dominant_score"]
-            result["manipulation"]["emotion_scores"] = ml["emotions"]["scores"]
-
+    if ml.get("ml_manipulation_score") is not None and "manipulation" in result:
+        gs = result["manipulation"].get("score", 0)
+        ms = ml["ml_manipulation_score"]
+        blended = round(gs * 0.6 + ms * 0.4)
+        result["manipulation"]["score"] = blended
+        result["manipulation"]["ml_score"] = ms
+        result["manipulation"]["level"] = "High" if blended >= 60 else "Medium" if blended >= 35 else "Low"
+    if ml.get("political_bias") and "bias" in result:
+        result["bias"]["ml_political"] = ml["political_bias"]
+    if ml.get("emotions") and "manipulation" in result:
+        result["manipulation"]["dominant_emotion"] = ml["emotions"]["dominant"]
+        result["manipulation"]["emotion_scores"] = ml["emotions"]["scores"]
     return result
 
 
-@router.post("/analyze")
-async def analyze_url(req: AnalyzeRequest):
-    # Check cache
-    if req.use_cache:
-        cached = get_analysis_by_url(req.url)
-        if cached:
-            cached["from_cache"] = True
-            return cached
-
-    # Scrape
-    try:
-        article = extract_article(req.url)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-
+async def _run_analysis(article: dict, url: str) -> dict:
     scrape_failed = article.get("scrape_failed", False)
 
-    # Run Groq LLM analysis
     try:
         ai_result = analyze_article_with_groq(
             title=article["title"],
             content=article["content"],
-            url=req.url,
+            url=url,
             scrape_failed=scrape_failed,
         )
     except Exception as e:
@@ -106,27 +61,65 @@ async def analyze_url(req: AnalyzeRequest):
 
     result = {**article, **ai_result, "from_cache": False, "scrape_failed": scrape_failed}
 
-    # Run real ML models if we have actual article text
     if not scrape_failed and len(article.get("content", "")) > 200:
         try:
-            ml_result = run_ml_analysis(article["content"])
-            result = _merge_ml_into_result(result, ml_result)
+            ml = run_ml_analysis(article["content"])
+            result = _merge_ml(result, ml)
         except Exception as e:
-            print(f"ML analysis error (non-fatal): {e}")
-            result["ml_analysis"] = {"available": False, "error": str(e)}
+            print(f"ML error (non-fatal): {e}")
+            result["ml_analysis"] = {"available": False}
     else:
-        result["ml_analysis"] = {"available": False, "reason": "no_content"}
+        result["ml_analysis"] = {"available": False}
 
-    # Related articles
     try:
-        query_terms = " ".join(article["title"].split()[:6])
-        related = search_same_story(query_terms, exclude_domain=article["source"], limit=3)
-        result["related_sources"] = related
+        query = " ".join(article["title"].split()[:6])
+        result["related_sources"] = search_same_story(query, exclude_domain=article["source"], limit=3)
     except Exception:
         result["related_sources"] = []
 
     save_analysis(result)
     return result
+
+
+@router.post("/analyze")
+async def analyze_url(req: AnalyzeRequest):
+    if req.use_cache:
+        cached = get_analysis_by_url(req.url)
+        if cached:
+            cached["from_cache"] = True
+            return cached
+
+    try:
+        article = extract_article(req.url)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return await _run_analysis(article, req.url)
+
+
+@router.post("/analyze/html")
+async def analyze_html(req: AnalyzeHtmlRequest):
+    """
+    Called when the browser fetches the page itself and sends HTML here.
+    This bypasses all server-side scraping restrictions completely.
+    """
+    if req.use_cache:
+        cached = get_analysis_by_url(req.url)
+        if cached:
+            cached["from_cache"] = True
+            return cached
+
+    if not req.html or len(req.html) < 500:
+        raise HTTPException(status_code=422, detail="HTML content too short or empty.")
+
+    try:
+        article = extract_from_html(req.html, req.url)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return await _run_analysis(article, req.url)
 
 
 @router.post("/analyze/text")
@@ -136,10 +129,7 @@ async def analyze_text(req: TextAnalyzeRequest):
 
     try:
         ai_result = analyze_article_with_groq(
-            title=req.title,
-            content=req.text,
-            url="text-input",
-            scrape_failed=False,
+            title=req.title, content=req.text, url="text-input", scrape_failed=False,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
@@ -149,21 +139,17 @@ async def analyze_text(req: TextAnalyzeRequest):
         "url": "text-input", "word_count": len(req.text.split()),
         **ai_result, "from_cache": False, "scrape_failed": False,
     }
-
-    # Run ML on pasted text too
     try:
-        ml_result = run_ml_analysis(req.text)
-        result = _merge_ml_into_result(result, ml_result)
-    except Exception as e:
+        ml = run_ml_analysis(req.text)
+        result = _merge_ml(result, ml)
+    except Exception:
         result["ml_analysis"] = {"available": False}
-
     return result
 
 
 @router.post("/simplify")
 async def simplify(req: TextAnalyzeRequest):
     try:
-        simplified = simplify_text(req.title, req.text)
-        return {"simplified": simplified}
+        return {"simplified": simplify_text(req.title, req.text)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

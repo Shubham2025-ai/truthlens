@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link2, FileText, ArrowRight, Zap, Shield, Eye, BarChart2, TrendingUp, Clock, ExternalLink } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { analyzeUrl, analyzeText, getHistory } from '../utils/api.js'
+import { smartAnalyze, analyzeText, getHistory } from '../utils/api.js'
 import LoadingAnalysis from '../components/LoadingAnalysis.jsx'
 
 const DEMO_ARTICLES = [
@@ -75,7 +75,7 @@ export default function HomePage() {
         // Clean the URL - strip hidden chars, emoji, spaces
         const cleanUrl = input.trim().replace(/^[^h]*(https?:\/\/)/i, '$1').trim()
         if (!cleanUrl.startsWith('http')) { toast.error('Please paste a valid article URL (starts with https://)'); setLoading(false); return }
-        res = await analyzeUrl(cleanUrl)
+        res = await smartAnalyze(cleanUrl)
       } else {
         if (input.trim().length < 100) { toast.error('Paste at least 100 characters of article text'); setLoading(false); return }
         res = await analyzeText(input.trim())
