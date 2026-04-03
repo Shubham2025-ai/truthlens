@@ -245,6 +245,9 @@ SOURCE DATABASE (AllSides + Ad Fontes + MBFC):
     else:
         anchor = f"No database entry for {source} — use your knowledge."
 
+    ref1 = f"AllSides rates this source as {source_ctx['allsides']}" if source_ctx else "Based on source domain knowledge"
+    ref2 = f"MBFC rates factual reporting as {source_ctx['mbfc']}" if source_ctx else "No database entry found"
+
     return f"""Analyze this source and article topic. Article text unavailable.
 {anchor}
 
@@ -264,8 +267,8 @@ Return ONLY valid JSON:
     "explanation": "<2 sentences on this source's known editorial stance>",
     "evidence": ["<known editorial pattern>", "<ownership/funding context>"],
     "reference_sources": [
-      "{f'AllSides rates this source as {source_ctx[\"allsides\"]}' if source_ctx else 'Based on source domain knowledge'}",
-      "{f'MBFC rates factual reporting as {source_ctx[\"mbfc\"]}' if source_ctx else 'No database entry found'}"
+      "{ref1}",
+      "{ref2}"
     ]
   }},
   "manipulation": {{
