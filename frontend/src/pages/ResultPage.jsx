@@ -12,6 +12,7 @@ import RelatedSources from '../components/RelatedSources.jsx'
 import MediaFingerprint from '../components/MediaFingerprint.jsx'
 import ShareCard from '../components/ShareCard.jsx'
 import QuickStats from '../components/QuickStats.jsx'
+import TrustEvidence from '../components/TrustEvidence.jsx'
 import MLInsights from '../components/MLInsights.jsx'
 
 function scoreColor(s) { return s >= 75 ? '#2ecc71' : s >= 50 ? '#f39c12' : s >= 30 ? '#e67e22' : '#e74c3c' }
@@ -136,6 +137,11 @@ export default function ResultPage() {
             <ELI15Panel eli15={data.summary_eli15} missingContext={data.key_missing_context} />
           </motion.div>
         </div>
+
+        {/* Why We Say This — Trust Evidence */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.42 }} className="mb-4">
+          <TrustEvidence data={data} />
+        </motion.div>
 
         {/* Media Fingerprint + Share Card */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
