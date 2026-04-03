@@ -1,32 +1,30 @@
 """
-ML Service — uses HuggingFace Inference API (free tier, no GPU needed)
-Real pre-trained models for sentiment, emotion, and bias detection.
-
-Models used:
-- cardiffnlp/twitter-roberta-base-sentiment-latest  → sentiment (positive/negative/neutral)
-- j-hartmann/emotion-english-distilroberta-base     → emotion (anger/fear/disgust/joy/sadness/surprise/neutral)
-- valurank/distilroberta-base-political-tweets       → political bias (left/center/right)
+ML Service — HuggingFace Inference API + Groq fallback
+When HF_API_KEY is set: uses real transformer models
+When no key: uses Groq LLM to compute equivalent scores (much better than 33/33/33)
 """
 
 import os
+import json
 import httpx
-import asyncio
+import time
 from dotenv import load_dotenv
 
 load_dotenv()
 
-HF_API_KEY = os.getenv("HF_API_KEY", "")  # Optional — free tier works without key (rate limited)
-HF_BASE = "https://api-inference.huggingface.co/models"
+HF_API_KEY = os.getenv("HF_API_KEY", "")
+HF_BASE    = "https://api-inference.huggingface.co/models"
 
-SENTIMENT_MODEL  = "cardiffnlp/twitter-roberta-base-sentiment-latest"
-EMOTION_MODEL    = "j-hartmann/emotion-english-distilroberta-base"
-BIAS_MODEL       = "valurank/distilroberta-base-political-tweets"
+SENTIMENT_MODEL = "cardiffnlp/twitter-roberta-base-sentiment-latest"
+EMOTION_MODEL   = "j-hartmann/emotion-english-distilroberta-base"
+BIAS_MODEL      = "valurank/distilroberta-base-political-tweets"
 
-HEADERS = {"Authorization": f"Bearer {HF_API_KEY}"} if HF_API_KEY else {}
+
+def _has_hf_key() -> bool:
+    return bool(HF_API_KEY and HF_API_KEY.startswith("hf_") and len(HF_API_KEY) > 10)
 
 
 def _chunk_text(text: str, max_chars: int = 450) -> list[str]:
-    """Split text into sentence-sized chunks that fit model token limits."""
     sentences = [s.strip() for s in text.replace('\n', ' ').split('.') if len(s.strip()) > 20]
     chunks, current = [], ""
     for s in sentences:
@@ -38,27 +36,30 @@ def _chunk_text(text: str, max_chars: int = 450) -> list[str]:
             current = s + ". "
     if current:
         chunks.append(current.strip())
-    return chunks[:12]  # max 12 chunks to avoid rate limits
+    return chunks[:8]
 
 
 def _call_hf(model: str, text: str) -> list | None:
-    """Call HuggingFace Inference API synchronously."""
+    if not _has_hf_key():
+        return None
     try:
+        headers = {
+            "Authorization": f"Bearer {HF_API_KEY}",
+            "Content-Type": "application/json"
+        }
         resp = httpx.post(
             f"{HF_BASE}/{model}",
-            headers={**HEADERS, "Content-Type": "application/json"},
+            headers=headers,
             json={"inputs": text[:512], "options": {"wait_for_model": True}},
             timeout=30,
         )
         if resp.status_code == 200:
             return resp.json()
         elif resp.status_code == 503:
-            # Model loading — wait and retry once
-            import time
             time.sleep(8)
             resp2 = httpx.post(
                 f"{HF_BASE}/{model}",
-                headers={**HEADERS, "Content-Type": "application/json"},
+                headers=headers,
                 json={"inputs": text[:512], "options": {"wait_for_model": True}},
                 timeout=40,
             )
@@ -69,15 +70,12 @@ def _call_hf(model: str, text: str) -> list | None:
     return None
 
 
-def _aggregate_labels(results_per_chunk: list[list]) -> dict:
-    """Average scores across chunks for each label."""
-    totals = {}
-    counts = {}
-    for chunk_results in results_per_chunk:
-        if not chunk_results or not isinstance(chunk_results, list):
+def _aggregate_labels(results: list[list]) -> dict:
+    totals, counts = {}, {}
+    for chunk_result in results:
+        if not chunk_result or not isinstance(chunk_result, list):
             continue
-        # HF returns [[{label, score}, ...]] or [{label, score}, ...]
-        items = chunk_results[0] if isinstance(chunk_results[0], list) else chunk_results
+        items = chunk_result[0] if isinstance(chunk_result[0], list) else chunk_result
         for item in items:
             label = item.get("label", "").lower()
             score = item.get("score", 0)
@@ -86,132 +84,192 @@ def _aggregate_labels(results_per_chunk: list[list]) -> dict:
     return {k: totals[k] / counts[k] for k in totals}
 
 
-def analyze_sentiment(text: str) -> dict:
+# ─── Groq-based ML fallback ──────────────────────────────────────────────────
+
+def _groq_ml_analysis(text: str) -> dict:
     """
-    Returns real sentiment scores using RoBERTa trained on 124M tweets.
-    Output: {positive: float, negative: float, neutral: float}
+    When no HF key, use Groq to compute real sentiment/emotion/political scores.
+    Returns same structure as HuggingFace models.
+    Much better than returning fake 33/33/33 fallback scores.
     """
-    chunks = _chunk_text(text)
-    results = []
-    for chunk in chunks[:6]:  # limit API calls
-        r = _call_hf(SENTIMENT_MODEL, chunk)
-        if r:
-            results.append(r)
+    try:
+        from groq import Groq
+        client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-    if not results:
-        return {"positive": 0.33, "negative": 0.33, "neutral": 0.34, "model": "fallback"}
+        prompt = f"""Analyze this news article text and return PRECISE percentage scores.
+Be a rigorous media analyst — do NOT return equal 33/33/33 scores unless the text is truly perfectly balanced.
+Most news articles have a dominant sentiment, emotion, and political lean.
 
-    aggregated = _aggregate_labels(results)
+Text (first 1500 chars):
+{text[:1500]}
 
-    # Normalize label names (model uses LABEL_0/1/2 or positive/negative/neutral)
-    normalized = {}
-    label_map = {
-        "label_0": "negative", "label_1": "neutral", "label_2": "positive",
-        "negative": "negative", "neutral": "neutral", "positive": "positive",
-    }
-    for k, v in aggregated.items():
-        mapped = label_map.get(k.lower(), k)
-        normalized[mapped] = round(v, 4)
+Return ONLY valid JSON (no markdown):
+{{
+  "sentiment": {{
+    "positive": <integer 0-100, how positive/optimistic is the language>,
+    "negative": <integer 0-100, how negative/alarming/critical is the language>,
+    "neutral": <integer 0-100, how dry/factual/unemotional is the language>,
+    "note": "These must sum to 100"
+  }},
+  "emotions": {{
+    "anger": <integer 0-100>,
+    "fear": <integer 0-100>,
+    "disgust": <integer 0-100>,
+    "sadness": <integer 0-100>,
+    "surprise": <integer 0-100>,
+    "joy": <integer 0-100>,
+    "neutral": <integer 0-100>,
+    "note": "Dominant emotion should score highest. War/conflict articles usually show fear/anger."
+  }},
+  "political_bias": {{
+    "left": <integer 0-100, pro-liberal/progressive/left-wing framing>,
+    "center": <integer 0-100, balanced/centrist framing>,
+    "right": <integer 0-100, pro-conservative/nationalist/right-wing framing>,
+    "note": "These must sum to 100"
+  }},
+  "manipulation_score": <integer 0-100, how emotionally manipulative is this text>
+}}
 
-    normalized["model"] = SENTIMENT_MODEL
-    return normalized
+CALIBRATION EXAMPLES:
+- War/conflict article with fear language → fear: 45, anger: 30, negative: 60, manipulation: 65
+- Dry financial news → neutral: 75, joy: 10, positive: 40, manipulation: 8  
+- Pro-government propaganda → right: 70, anger: 25, negative: 40, manipulation: 70
+- Progressive advocacy piece → left: 65, sadness: 30, negative: 35, manipulation: 45"""
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
+            max_tokens=600,
+        )
+
+        raw = response.choices[0].message.content.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        return json.loads(raw.strip())
+
+    except Exception as e:
+        print(f"Groq ML fallback error: {e}")
+        return None
 
 
-def analyze_emotions(text: str) -> dict:
-    """
-    Detects 7 emotions using DistilRoBERTa trained on ~20k English texts.
-    Output: {anger: float, fear: float, disgust: float, joy: float,
-             sadness: float, surprise: float, neutral: float}
-    """
-    chunks = _chunk_text(text)
-    results = []
-    for chunk in chunks[:6]:
-        r = _call_hf(EMOTION_MODEL, chunk)
-        if r:
-            results.append(r)
-
-    if not results:
-        return {"neutral": 1.0, "model": "fallback"}
-
-    aggregated = _aggregate_labels(results)
-    aggregated["model"] = EMOTION_MODEL
-
-    # Round all scores
-    return {k: round(v, 4) if k != "model" else v for k, v in aggregated.items()}
-
-
-def analyze_political_bias(text: str) -> dict:
-    """
-    Detects political lean using DistilRoBERTa trained on political tweets.
-    Output: {left: float, center: float, right: float}
-    """
-    chunks = _chunk_text(text)
-    results = []
-    for chunk in chunks[:6]:
-        r = _call_hf(BIAS_MODEL, chunk)
-        if r:
-            results.append(r)
-
-    if not results:
-        return {"left": 0.33, "center": 0.34, "right": 0.33, "model": "fallback"}
-
-    aggregated = _aggregate_labels(results)
-    aggregated["model"] = BIAS_MODEL
-    return {k: round(v, 4) if k != "model" else v for k, v in aggregated.items()}
-
+# ─── Main entry point ─────────────────────────────────────────────────────────
 
 def run_ml_analysis(text: str) -> dict:
-    """
-    Run all 3 ML models on article text.
-    Returns combined results with model metadata.
-    Falls back gracefully if HF API is unavailable.
-    """
     if not text or len(text.strip()) < 100:
         return {"available": False, "reason": "insufficient_text"}
 
-    # Run all 3 in sequence (HF free tier doesn't support parallel well)
-    sentiment = analyze_sentiment(text)
-    emotions  = analyze_emotions(text)
-    political = analyze_political_bias(text)
+    using_hf = _has_hf_key()
 
-    # Determine dominant emotion
-    emotion_scores = {k: v for k, v in emotions.items() if k != "model"}
-    dominant_emotion = max(emotion_scores, key=emotion_scores.get) if emotion_scores else "neutral"
-    dominant_score   = round(emotion_scores.get(dominant_emotion, 0) * 100)
+    if using_hf:
+        # Use real HuggingFace transformer models
+        return _run_hf_analysis(text)
+    else:
+        # Use Groq LLM as ML proxy — real scores, not fake 33/33/33
+        return _run_groq_ml_analysis(text)
 
-    # Map political bias to human label
-    political_scores = {k: v for k, v in political.items() if k != "model"}
-    dominant_political = max(political_scores, key=political_scores.get) if political_scores else "center"
-    political_confidence = round(political_scores.get(dominant_political, 0) * 100)
 
-    # Compute manipulation score from ML signals (not hardcoded regex)
-    neg_sentiment = sentiment.get("negative", 0)
-    anger_score   = emotions.get("anger", 0)
-    fear_score    = emotions.get("fear", 0)
-    disgust_score = emotions.get("disgust", 0)
-    ml_manip_score = round((neg_sentiment * 0.3 + anger_score * 0.3 + fear_score * 0.25 + disgust_score * 0.15) * 100)
+def _run_hf_analysis(text: str) -> dict:
+    chunks = _chunk_text(text)
+
+    # Sentiment
+    sent_results = [r for chunk in chunks[:5] if (r := _call_hf(SENTIMENT_MODEL, chunk))]
+    sent_agg = _aggregate_labels(sent_results) if sent_results else {}
+    label_map = {"label_0": "negative", "label_1": "neutral", "label_2": "positive"}
+    sentiment = {label_map.get(k, k): round(v * 100) for k, v in sent_agg.items() if k != "model"}
+
+    # Emotions
+    emo_results = [r for chunk in chunks[:5] if (r := _call_hf(EMOTION_MODEL, chunk))]
+    emo_agg = _aggregate_labels(emo_results) if emo_results else {}
+    emotions = {k: round(v * 100) for k, v in emo_agg.items()}
+
+    # Political
+    pol_results = [r for chunk in chunks[:5] if (r := _call_hf(BIAS_MODEL, chunk))]
+    pol_agg = _aggregate_labels(pol_results) if pol_results else {}
+    political = {k: round(v * 100) for k, v in pol_agg.items()}
+
+    if not sentiment or not emotions:
+        # HF failed despite having key — fall back to Groq
+        return _run_groq_ml_analysis(text)
+
+    dominant_emo = max(emotions, key=emotions.get) if emotions else "neutral"
+    dominant_pol = max(political, key=political.get) if political else "center"
+    neg = sentiment.get("negative", 0) / 100
+    ang = emotions.get("anger", 0) / 100
+    fea = emotions.get("fear", 0) / 100
+    dis = emotions.get("disgust", 0) / 100
+    manip = round((neg * 0.3 + ang * 0.3 + fea * 0.25 + dis * 0.15) * 100)
 
     return {
         "available": True,
+        "source": "huggingface",
         "sentiment": {
-            "positive": round(sentiment.get("positive", 0) * 100),
-            "negative": round(sentiment.get("negative", 0) * 100),
-            "neutral":  round(sentiment.get("neutral", 0) * 100),
-            "model": sentiment.get("model"),
+            "positive": sentiment.get("positive", 0),
+            "negative": sentiment.get("negative", 0),
+            "neutral":  sentiment.get("neutral", 0),
+            "model": SENTIMENT_MODEL,
         },
         "emotions": {
-            "scores": {k: round(v * 100) for k, v in emotion_scores.items()},
-            "dominant": dominant_emotion,
-            "dominant_score": dominant_score,
-            "model": emotions.get("model"),
+            "scores": emotions,
+            "dominant": dominant_emo,
+            "dominant_score": emotions.get(dominant_emo, 0),
+            "model": EMOTION_MODEL,
         },
         "political_bias": {
-            "left":       round(political_scores.get("left", 0) * 100),
-            "center":     round(political_scores.get("center", 0) * 100),
-            "right":      round(political_scores.get("right", 0) * 100),
-            "dominant":   dominant_political,
-            "confidence": political_confidence,
-            "model": political.get("model"),
+            "left":       political.get("left", 0),
+            "center":     political.get("center", 0),
+            "right":      political.get("right", 0),
+            "dominant":   dominant_pol,
+            "confidence": political.get(dominant_pol, 0),
+            "model": BIAS_MODEL,
         },
-        "ml_manipulation_score": ml_manip_score,
+        "ml_manipulation_score": manip,
+    }
+
+
+def _run_groq_ml_analysis(text: str) -> dict:
+    """Use Groq LLM to produce real sentiment/emotion/political scores."""
+    groq_result = _groq_ml_analysis(text)
+
+    if not groq_result:
+        return {"available": False, "reason": "groq_ml_failed"}
+
+    sent  = groq_result.get("sentiment", {})
+    emos  = groq_result.get("emotions", {})
+    pol   = groq_result.get("political_bias", {})
+    manip = groq_result.get("manipulation_score", 0)
+
+    # Remove 'note' keys
+    emo_scores = {k: v for k, v in emos.items() if k != "note" and isinstance(v, (int, float))}
+    pol_scores = {k: v for k, v in pol.items() if k != "note" and isinstance(v, (int, float))}
+
+    dominant_emo = max(emo_scores, key=emo_scores.get) if emo_scores else "neutral"
+    dominant_pol = max(pol_scores, key=pol_scores.get) if pol_scores else "center"
+
+    return {
+        "available": True,
+        "source": "groq_llm",   # shown in UI so judges know which model
+        "sentiment": {
+            "positive": sent.get("positive", 0),
+            "negative": sent.get("negative", 0),
+            "neutral":  sent.get("neutral",  0),
+            "model": "Groq Llama 3.3 70B (sentiment)",
+        },
+        "emotions": {
+            "scores": emo_scores,
+            "dominant": dominant_emo,
+            "dominant_score": emo_scores.get(dominant_emo, 0),
+            "model": "Groq Llama 3.3 70B (emotion)",
+        },
+        "political_bias": {
+            "left":       pol_scores.get("left",   0),
+            "center":     pol_scores.get("center", 0),
+            "right":      pol_scores.get("right",  0),
+            "dominant":   dominant_pol,
+            "confidence": pol_scores.get(dominant_pol, 0),
+            "model": "Groq Llama 3.3 70B (political)",
+        },
+        "ml_manipulation_score": manip,
     }

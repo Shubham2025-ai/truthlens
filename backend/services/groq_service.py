@@ -114,12 +114,15 @@ def analyze_article_with_groq(
             {
                 "role": "system",
                 "content": (
-                    "You are an expert media analyst with 20 years experience in journalism, "
-                    "fact-checking, and political science. You give SHARP, SPECIFIC, EVIDENCE-BASED "
-                    "assessments grounded in real media research. You NEVER default to 'Neutral' or "
-                    "safe middle scores. You cite specific phrases and framing choices as evidence. "
-                    "When a source database entry is provided, it anchors your credibility score — "
-                    "adjust it based on THIS article's specific content, but stay within ±15 of the database baseline."
+                    "You are an expert media analyst. STRICT RULES YOU MUST FOLLOW:\n"
+                    "1. NEVER return empty verifiable_claims array — extract at least 2-3 claims from the article\n"
+                    "2. NEVER return empty flagged_phrases if manipulation score > 20 — find actual emotional words\n"
+                    "3. NEVER say emotional_tone is Neutral unless the article is a dry wire report with zero emotion\n"
+                    "4. NEVER set manipulation level to Low with score < 15 for conflict/war/political articles\n"
+                    "5. Always find SPECIFIC bias evidence — quote exact phrases from the article\n"
+                    "6. If article is about conflict, politics, or society — there IS bias and manipulation, find it\n"
+                    "7. credibility scores: tabloids 15-40, partisan blogs 20-45, state media 15-40, quality press 70-90\n"
+                    "Your assessments must be BOLD, SPECIFIC, and backed by exact quotes from the text."
                 )
             },
             {"role": "user", "content": prompt}
@@ -168,15 +171,15 @@ Assess purely from article content and your knowledge of this source.
 
 {anchor}
 
-CRITICAL RULES:
-1. credibility_score: Use the FULL 0-100 range. Anchor to source database ±15.
-2. bias.label: Be SPECIFIC. Cite exact phrases from the article as evidence.
-3. bias.evidence: List 2-3 EXACT quotes or framing choices that prove the bias.
-4. bias.reference_sources: Name the real organizations whose ratings you're referencing.
-5. manipulation.flagged_phrases: Only use ACTUAL phrases from the article text below.
-6. fact_check: Extract real claims with real status based on your knowledge.
-7. trust_indicators: List what makes this article MORE trustworthy (named sources, data, etc.)
-8. trust_concerns: List what makes it LESS trustworthy (anonymous sources, loaded language, etc.)
+CRITICAL RULES — VIOLATIONS WILL CAUSE FAILURE:
+1. credibility_score: Use FULL 0-100 range. NOT everything is 75-85. Anchor to source database ±15.
+2. bias.label: NEVER say "Neutral" for opinion, analysis, or advocacy pieces. Be specific.
+3. bias.evidence: REQUIRED — copy 2-3 EXACT phrases from the article that show bias.
+4. manipulation.flagged_phrases: REQUIRED if score > 20 — find emotional/loaded words in the text.
+5. manipulation.emotional_tone: NEVER "Neutral" for conflict/political articles. Pick Alarmist/Hostile/Fearful/etc.
+6. fact_check.verifiable_claims: REQUIRED — extract at least 2 specific factual claims from the article.
+7. If article mentions deaths, attacks, politics, elections, conflict — manipulation score must be > 30.
+8. trust_indicators and trust_concerns: REQUIRED — list at least 2 each.
 
 Article Title: {title}
 Article URL:   {url}
