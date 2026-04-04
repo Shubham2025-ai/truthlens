@@ -210,7 +210,7 @@ export default function ResultPage() {
         {/* ═══ SECTION 2: CORE SCORES — credibility + bias ═══ */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
           <motion.div {...fade(0.15)}>
-            <CredibilityRing score={data.credibility_score} accuracy={data.fact_check?.overall_accuracy} />
+            <CredibilityRing score={data.credibility_score} accuracy={data.fact_check?.overall_accuracy} sourceDb={data.source_database} />
           </motion.div>
           <motion.div {...fade(0.2)} className="sm:col-span-2">
             <BiasMeter bias={data.bias} />
