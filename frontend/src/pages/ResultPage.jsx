@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import CredibilityRing from '../components/CredibilityRing.jsx'
 import BiasMeter from '../components/BiasMeter.jsx'
 import ManipulationPanel from '../components/ManipulationPanel.jsx'
-import FactCheckPanel from '../components/FactCheckPanel.jsx'
+import ClaimEvidencePanel from '../components/ClaimEvidencePanel.jsx'
 import ELI15Panel from '../components/ELI15Panel.jsx'
 import RelatedSources from '../components/RelatedSources.jsx'
 import MediaFingerprint from '../components/MediaFingerprint.jsx'
@@ -222,11 +222,15 @@ export default function ResultPage() {
           <ManipulationPanel manipulation={data.manipulation} />
         </motion.div>
 
-        {/* ═══ SECTION 4: FACTS + PLAIN ENGLISH ═══ */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-          <motion.div {...fade(0.3)}><FactCheckPanel factCheck={data.fact_check} /></motion.div>
-          <motion.div {...fade(0.35)}><ELI15Panel eli15={data.summary_eli15} missingContext={data.key_missing_context} /></motion.div>
-        </div>
+        {/* ═══ SECTION 4: CLAIM VS EVIDENCE (wow widget) ═══ */}
+        <motion.div {...fade(0.3)} className="mb-4">
+          <ClaimEvidencePanel factCheck={data.fact_check} />
+        </motion.div>
+
+        {/* ═══ SECTION 4b: AI SUMMARY ═══ */}
+        <motion.div {...fade(0.35)} className="mb-4">
+          <ELI15Panel eli15={data.summary_eli15} missingContext={data.key_missing_context} />
+        </motion.div>
 
         {/* ═══ SECTION 5: WHY WE SAY THIS — trust evidence ═══ */}
         <motion.div {...fade(0.4)} className="mb-4">
