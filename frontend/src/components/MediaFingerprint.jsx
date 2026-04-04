@@ -211,27 +211,29 @@ export default function MediaFingerprint({ data }) {
         <canvas ref={canvasRef} width={280} height={280} style={{ maxWidth: '100%' }} />
       </div>
 
-      {/* Data source table — full transparency */}
-      <div className="space-y-1">
-        {dims.map((d, i) => (
-          <div key={i} className="flex items-center gap-2 text-xs">
-            <div className="w-20 text-white/35 font-mono truncate">{d.label}</div>
-            <div className="flex-1 h-1 bg-white/6 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-700"
-                style={{
-                  width: `${d.value}%`,
-                  background: d.value >= 70 ? '#2ecc71' : d.value >= 45 ? '#f39c12' : '#e74c3c',
-                  transitionDelay: `${i * 80}ms`
-                }}
-              />
+      {/* Dimension bars — label + score only, no internal source text */}
+      <div className="space-y-1.5">
+        {dims.map((d, i) => {
+          const barColor = d.value >= 70 ? '#2ecc71' : d.value >= 45 ? '#f39c12' : '#e74c3c'
+          return (
+            <div key={i} className="flex items-center gap-2.5 text-xs">
+              <div className="w-24 text-white/40 font-mono">{d.label}</div>
+              <div className="flex-1 h-1.5 bg-white/6 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${d.value}%`,
+                    background: barColor,
+                    transition: `width 0.8s ease ${i * 80}ms`,
+                  }}
+                />
+              </div>
+              <div className="w-7 text-right font-mono font-medium" style={{ color: barColor }}>
+                {d.value}
+              </div>
             </div>
-            <div className="w-6 text-right font-mono" style={{
-              color: d.value >= 70 ? '#2ecc71' : d.value >= 45 ? '#f39c12' : '#e74c3c'
-            }}>{d.value}</div>
-            <div className="w-28 text-white/18 font-mono truncate text-right hidden sm:block">{d.source}</div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
