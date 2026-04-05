@@ -13,6 +13,7 @@ import MediaFingerprint from '../components/MediaFingerprint.jsx'
 import ShareCard from '../components/ShareCard.jsx'
 import TrustEvidence from '../components/TrustEvidence.jsx'
 import MLInsights from '../components/MLInsights.jsx'
+import CompliancePanel from '../components/CompliancePanel.jsx'
 
 function sc(s) { return s >= 75 ? '#2ecc71' : s >= 50 ? '#f39c12' : s >= 30 ? '#e67e22' : '#e74c3c' }
 function sl(s) { return s >= 80 ? 'High Credibility' : s >= 60 ? 'Moderate Credibility' : s >= 40 ? 'Low Credibility' : 'Very Low Credibility' }
@@ -237,7 +238,12 @@ export default function ResultPage() {
           <TrustEvidence data={data} />
         </motion.div>
 
-        {/* ═══ SECTION 6: ML INSIGHTS ═══ */}
+        {/* ═══ SECTION 6: LEGAL COMPLIANCE ═══ */}
+        <motion.div {...fade(0.43)} className="mb-4">
+          <CompliancePanel data={data} />
+        </motion.div>
+
+        {/* ═══ SECTION 7: ML INSIGHTS ═══ */}
         {data.ml_analysis?.available && (
           <motion.div {...fade(0.45)} className="mb-4">
             <MLInsights ml={data.ml_analysis} />
