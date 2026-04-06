@@ -167,9 +167,6 @@ export default function ClaimEvidencePanel({ factCheck }) {
         </button>
       )}
 
-      <p className="text-xs text-white/12 font-mono mt-3 text-center">
-        Fact-check powered by Groq Llama 3.3 70B · Not a substitute for independent verification
-      </p>
     </div>
   )
 }
