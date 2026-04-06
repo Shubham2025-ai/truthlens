@@ -71,14 +71,27 @@ async def _run_analysis(article: dict, url: str) -> dict:
     else:
         result["ml_analysis"] = {"available": False}
 
-    try:
-        query = " ".join(article["title"].split()[:6])
-        result["related_sources"] = search_same_story(query, exclude_domain=article["source"], limit=3)
-    except Exception:
-        result["related_sources"] = []
+    # Always attempt related sources — use title + conflict_region for a richer query
+    result["related_sources"] = _fetch_related(article, result)
 
     save_analysis(result)
     return result
+
+
+def _fetch_related(article: dict, result: dict) -> list:
+    """Build the best possible query and fetch related coverage."""
+    try:
+        title_words = article.get("title", "").split()[:6]
+        region = result.get("conflict_region", "")
+        # Combine title keywords + conflict region for a more targeted query
+        query_parts = title_words + ([region] if region and region not in " ".join(title_words) else [])
+        query = " ".join(query_parts)[:100]
+        if not query.strip():
+            return []
+        return search_same_story(query, exclude_domain=article.get("source", ""), limit=3)
+    except Exception as e:
+        print(f"Related sources error (non-fatal): {e}")
+        return []
 
 
 @router.post("/analyze")
@@ -87,6 +100,13 @@ async def analyze_url(req: AnalyzeRequest):
         cached = get_analysis_by_url(req.url)
         if cached:
             cached["from_cache"] = True
+            # If cached result has no related sources, try to fetch them now
+            if not cached.get("related_sources"):
+                try:
+                    article = {"title": cached.get("title", ""), "source": cached.get("source", "")}
+                    cached["related_sources"] = _fetch_related(article, cached)
+                except Exception:
+                    cached["related_sources"] = []
             return cached
 
     try:
@@ -109,6 +129,12 @@ async def analyze_html(req: AnalyzeHtmlRequest):
         cached = get_analysis_by_url(req.url)
         if cached:
             cached["from_cache"] = True
+            if not cached.get("related_sources"):
+                try:
+                    article = {"title": cached.get("title", ""), "source": cached.get("source", "")}
+                    cached["related_sources"] = _fetch_related(article, cached)
+                except Exception:
+                    cached["related_sources"] = []
             return cached
 
     if not req.html or len(req.html) < 500:
@@ -144,6 +170,10 @@ async def analyze_text(req: TextAnalyzeRequest):
         result = _merge_ml(result, ml)
     except Exception:
         result["ml_analysis"] = {"available": False}
+
+    # Fetch related sources for pasted text too
+    article = {"title": req.title, "source": req.source}
+    result["related_sources"] = _fetch_related(article, result)
     return result
 
 
