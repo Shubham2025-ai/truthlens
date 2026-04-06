@@ -240,14 +240,20 @@ export default function ResultPage() {
         {/* ── Article title ── */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
           className="mb-5">
-          <h1 className="font-serif text-2xl sm:text-3xl text-white leading-snug mb-2">{data.title}</h1>
+          <h1 className="font-serif text-2xl sm:text-3xl text-white leading-snug mb-2">
+            {data.title && data.title !== 'Pasted Text' ? data.title : data.summary_eli15 ? 'Pasted Article' : 'Analysis Result'}
+          </h1>
           <div className="flex flex-wrap items-center gap-2.5">
-            <span className="text-xs font-mono text-white/35">{data.source}</span>
+            {data.url === 'text-input' ? (
+              <span className="text-xs font-mono bg-blue-400/10 text-blue-400/70 border border-blue-400/20 px-2.5 py-1 rounded-full">Pasted article text</span>
+            ) : (
+              <span className="text-xs font-mono text-white/35">{data.source}</span>
+            )}
             {data.conflict_region && (
               <span className="text-xs font-mono bg-accent/10 text-accent/65 px-2 py-0.5 rounded-full">{data.conflict_region}</span>
             )}
             {data.word_count > 0 && <span className="text-xs text-white/25">· {data.word_count} words</span>}
-            {data.source_reliability && (
+            {data.source_reliability && data.source_reliability !== 'Unknown' && (
               <span className="text-xs font-mono bg-white/6 text-white/35 px-2 py-0.5 rounded-full">{data.source_reliability}</span>
             )}
             {data.url !== 'text-input' && (

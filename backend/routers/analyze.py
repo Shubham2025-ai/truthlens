@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from services.scraper import extract_article, extract_from_html
-from services.groq_service import analyze_article_with_groq, simplify_text
+from services.groq_service import analyze_article_with_groq, simplify_text, extract_title_from_text
 from services.database import save_analysis, get_analysis_by_url
 from services.news_service import search_same_story
 from services.ml_service import run_ml_analysis
@@ -16,7 +16,7 @@ class AnalyzeRequest(BaseModel):
 
 class AnalyzeHtmlRequest(BaseModel):
     url: str
-    html: str       # Raw HTML sent from the user's browser
+    html: str
     use_cache: bool = True
 
 
@@ -46,6 +46,47 @@ def _merge_ml(result: dict, ml: dict) -> dict:
     return result
 
 
+def _get_related(title: str, conflict_region: str, source: str) -> list[dict]:
+    """
+    Search for related coverage. Falls back to smart curated links
+    when NewsAPI key is missing or returns nothing useful.
+    """
+    # Use conflict_region if available for better query
+    query_base = conflict_region or " ".join(title.split()[:6])
+    query = query_base[:80]
+
+    results = search_same_story(query, exclude_domain=source, limit=3)
+
+    # Filter out the generic "Search for: X" fallback entries — they look bad
+    real_results = [r for r in results if not r.get("title", "").startswith("Search for:")]
+
+    if real_results:
+        return real_results
+
+    # Build smart curated links based on the topic
+    topic = (conflict_region or query).replace(" ", "+")
+    return [
+        {
+            "source": "BBC News",
+            "title": f"BBC coverage: {conflict_region or title[:60]}",
+            "url": f"https://www.bbc.com/search?q={topic}",
+            "description": "Search BBC News for related coverage",
+        },
+        {
+            "source": "Al Jazeera",
+            "title": f"Al Jazeera coverage: {conflict_region or title[:60]}",
+            "url": f"https://www.aljazeera.com/search/{topic}",
+            "description": "Search Al Jazeera for related coverage",
+        },
+        {
+            "source": "Reuters",
+            "title": f"Reuters coverage: {conflict_region or title[:60]}",
+            "url": f"https://www.reuters.com/search/news?blob={topic}",
+            "description": "Search Reuters for related coverage",
+        },
+    ]
+
+
 async def _run_analysis(article: dict, url: str) -> dict:
     scrape_failed = article.get("scrape_failed", False)
 
@@ -61,6 +102,7 @@ async def _run_analysis(article: dict, url: str) -> dict:
 
     result = {**article, **ai_result, "from_cache": False, "scrape_failed": scrape_failed}
 
+    # ML analysis
     if not scrape_failed and len(article.get("content", "")) > 200:
         try:
             ml = run_ml_analysis(article["content"])
@@ -71,27 +113,18 @@ async def _run_analysis(article: dict, url: str) -> dict:
     else:
         result["ml_analysis"] = {"available": False}
 
-    # Always attempt related sources — use title + conflict_region for a richer query
-    result["related_sources"] = _fetch_related(article, result)
+    # Related coverage — always try, never leave empty
+    try:
+        result["related_sources"] = _get_related(
+            title=result.get("title", ""),
+            conflict_region=result.get("conflict_region", ""),
+            source=article.get("source", ""),
+        )
+    except Exception:
+        result["related_sources"] = []
 
     save_analysis(result)
     return result
-
-
-def _fetch_related(article: dict, result: dict) -> list:
-    """Build the best possible query and fetch related coverage."""
-    try:
-        title_words = article.get("title", "").split()[:6]
-        region = result.get("conflict_region", "")
-        # Combine title keywords + conflict region for a more targeted query
-        query_parts = title_words + ([region] if region and region not in " ".join(title_words) else [])
-        query = " ".join(query_parts)[:100]
-        if not query.strip():
-            return []
-        return search_same_story(query, exclude_domain=article.get("source", ""), limit=3)
-    except Exception as e:
-        print(f"Related sources error (non-fatal): {e}")
-        return []
 
 
 @router.post("/analyze")
@@ -100,13 +133,6 @@ async def analyze_url(req: AnalyzeRequest):
         cached = get_analysis_by_url(req.url)
         if cached:
             cached["from_cache"] = True
-            # If cached result has no related sources, try to fetch them now
-            if not cached.get("related_sources"):
-                try:
-                    article = {"title": cached.get("title", ""), "source": cached.get("source", "")}
-                    cached["related_sources"] = _fetch_related(article, cached)
-                except Exception:
-                    cached["related_sources"] = []
             return cached
 
     try:
@@ -121,20 +147,10 @@ async def analyze_url(req: AnalyzeRequest):
 
 @router.post("/analyze/html")
 async def analyze_html(req: AnalyzeHtmlRequest):
-    """
-    Called when the browser fetches the page itself and sends HTML here.
-    This bypasses all server-side scraping restrictions completely.
-    """
     if req.use_cache:
         cached = get_analysis_by_url(req.url)
         if cached:
             cached["from_cache"] = True
-            if not cached.get("related_sources"):
-                try:
-                    article = {"title": cached.get("title", ""), "source": cached.get("source", "")}
-                    cached["related_sources"] = _fetch_related(article, cached)
-                except Exception:
-                    cached["related_sources"] = []
             return cached
 
     if not req.html or len(req.html) < 500:
@@ -153,27 +169,58 @@ async def analyze_text(req: TextAnalyzeRequest):
     if len(req.text.strip()) < 100:
         raise HTTPException(status_code=422, detail="Text too short. Please paste at least 100 characters.")
 
+    # Step 1: Extract a real title from the pasted text using Groq
+    real_title = req.title
+    if req.title == "Pasted Text" or req.title == "Unknown":
+        try:
+            real_title = extract_title_from_text(req.text)
+        except Exception:
+            real_title = req.text[:80].strip().rstrip('.') + "..."
+
     try:
         ai_result = analyze_article_with_groq(
-            title=req.title, content=req.text, url="text-input", scrape_failed=False,
+            title=real_title,
+            content=req.text,
+            url="text-input",
+            scrape_failed=False,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
 
+    # Use AI-derived title if Groq returned a better one
+    final_title = ai_result.pop("extracted_title", None) or real_title
+
     result = {
-        "title": req.title, "source": req.source, "content": req.text,
-        "url": "text-input", "word_count": len(req.text.split()),
-        **ai_result, "from_cache": False, "scrape_failed": False,
+        "title": final_title,
+        "source": req.source if req.source != "Unknown" else "Pasted Article",
+        "content": req.text,
+        "url": "text-input",
+        "word_count": len(req.text.split()),
+        **ai_result,
+        "from_cache": False,
+        "scrape_failed": False,
     }
+
+    # ML analysis
     try:
         ml = run_ml_analysis(req.text)
         result = _merge_ml(result, ml)
     except Exception:
         result["ml_analysis"] = {"available": False}
 
-    # Fetch related sources for pasted text too
-    article = {"title": req.title, "source": req.source}
-    result["related_sources"] = _fetch_related(article, result)
+    # Related coverage based on AI-detected region/topic
+    try:
+        result["related_sources"] = _get_related(
+            title=result["title"],
+            conflict_region=result.get("conflict_region", ""),
+            source="",
+        )
+    except Exception:
+        result["related_sources"] = []
+
+    # Save to history — was missing before!
+    save_analysis(result)
+
     return result
 
 

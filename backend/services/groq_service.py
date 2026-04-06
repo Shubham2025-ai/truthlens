@@ -296,6 +296,34 @@ Return ONLY valid JSON:
 }}"""
 
 
+
+
+def extract_title_from_text(text: str) -> str:
+    """Extract a real headline from pasted text instead of returning 'Pasted Text'."""
+    try:
+        lines_preview = text[:800].replace(chr(10), " ").strip()
+        prompt = (
+            "Extract a concise, specific news headline (maximum 12 words) for this article text. "
+            "Return ONLY the headline with no quotes, no punctuation at the end, no explanation.\n\n"
+            "Article text: " + lines_preview
+        )
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=60,
+        )
+        title = response.choices[0].message.content.strip()
+        title = title.strip(chr(34)).strip(chr(39))
+        if len(title) > 10:
+            return title
+    except Exception:
+        pass
+    # Fallback: first meaningful sentence
+    parts = [s.strip() for s in text[:300].split(".") if len(s.strip()) > 20]
+    return parts[0][:100] if parts else text[:80].strip()
+
+
 def simplify_text(title: str, content: str) -> str:
     response = client.chat.completions.create(
         model=MODEL,
