@@ -1,7 +1,9 @@
-# TruthLens 🔍  
-**AI-powered war news verifier, bias detector, and emotional manipulation analyzer**
+TruthLens 🔍
 
-> In an era of information warfare, TruthLens helps people analyze conflict reporting critically — by revealing bias framing, emotional manipulation tactics, credibility gaps, and claim-level fact-check signals.
+AI-powered war news verifier, bias detector, and emotional manipulation analyzer
+👉 Live Demo: https://truthlens-ecru.vercel.app/
+
+In an era of information warfare, TruthLens helps people analyze conflict reporting critically — by revealing bias framing, emotional manipulation tactics, credibility gaps, and claim-level fact-check signals.
 
 ![Status](https://img.shields.io/badge/status-active-success)
 ![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20Vite-61DAFB)
