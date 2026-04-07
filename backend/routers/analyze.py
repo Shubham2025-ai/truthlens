@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from services.scraper import extract_article, extract_from_html
 from services.groq_service import analyze_article_with_groq, simplify_text, extract_title_from_text
 from services.database import save_analysis, get_analysis_by_url
-from services.news_service import search_same_story
+from services.news_service import search_same_story, corroborate_claims
 from services.ml_service import run_ml_analysis
 
 router = APIRouter()
@@ -113,6 +113,17 @@ async def _run_analysis(article: dict, url: str) -> dict:
     except Exception as e:
         print(f"ML error (non-fatal): {e}")
         result["ml_analysis"] = {"available": False}
+
+    # Corroborate fact-check claims with real independent news sources
+    # This is the key trust-building feature — proves claims are grounded in reality
+    try:
+        claims = result.get("fact_check", {}).get("verifiable_claims", [])
+        if claims:
+            region = result.get("conflict_region", "")
+            enriched_claims = corroborate_claims(claims, region)
+            result["fact_check"]["verifiable_claims"] = enriched_claims
+    except Exception as e:
+        print(f"Corroboration error (non-fatal): {e}")
 
     # Related coverage — always try, never leave empty
     try:

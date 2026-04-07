@@ -9,7 +9,7 @@ import toast from 'react-hot-toast'
 import CredibilityRing    from '../components/CredibilityRing.jsx'
 import BiasMeter          from '../components/BiasMeter.jsx'
 import ManipulationPanel  from '../components/ManipulationPanel.jsx'
-import ClaimEvidencePanel from '../components/ClaimEvidencePanel.jsx'
+import LiveCorroboration from '../components/LiveCorroboration.jsx'
 import ELI15Panel         from '../components/ELI15Panel.jsx'
 import TrustEvidence      from '../components/TrustEvidence.jsx'
 import CompliancePanel    from '../components/CompliancePanel.jsx'
@@ -314,8 +314,8 @@ export default function ResultPage() {
         </Section>
 
         {/* ══ 4. CLAIM vs EVIDENCE ════════════════════════════════════════ */}
-        <Section label="Fact check — claim by claim" delay={0.20}>
-          <ClaimEvidencePanel factCheck={data.fact_check} />
+        <Section label="Fact check — live corroboration" delay={0.20}>
+          <LiveCorroboration factCheck={data.fact_check} />
         </Section>
 
         {/* ══ 5. AI SUMMARY ═══════════════════════════════════════════════ */}
