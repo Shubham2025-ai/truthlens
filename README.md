@@ -1,153 +1,268 @@
-# TruthLens 🔍
-**AI-powered war news verifier, bias detector & emotional manipulation analyzer**
+# TruthLens 🔍  
+**AI-powered war news verifier, bias detector, and emotional manipulation analyzer**
 
-Built with Groq (Llama 3 70B) · FastAPI · React · Supabase · Render · Vercel
+> In an era of information warfare, TruthLens helps people analyze conflict reporting critically — by revealing bias framing, emotional manipulation tactics, credibility gaps, and claim-level fact-check signals.
+
+![Status](https://img.shields.io/badge/status-active-success)
+![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20Vite-61DAFB)
+![Backend](https://img.shields.io/badge/backend-FastAPI-009688)
+![AI](https://img.shields.io/badge/AI-Groq%20Llama%203%2070B-orange)
+![DB](https://img.shields.io/badge/database-Supabase-3ECF8E)
+![Extension](https://img.shields.io/badge/chrome-extension-blue)
 
 ---
 
-## Stack
-| Layer | Tech |
-|-------|------|
+## 🚀 What We Built (So Far)
+
+TruthLens is a multi-platform misinformation analysis system with:
+
+- **Web App** (React + Vite) for full analysis workflows
+- **FastAPI Backend** for scraping, AI analysis, comparison, and history
+- **Chrome Extension** for instant “analyze current article” UX
+- **Supabase Persistence** for analysis history and reuse
+- **Smart Caching** to avoid duplicate re-analysis for recent URLs
+
+This is not just a classifier — it is a **reasoning-first assistant** that explains *why* an article may be biased, manipulative, or weakly credible.
+
+---
+
+## 🧠 Core Features
+
+### 1) Bias Detection
+- Detects narrative framing direction (e.g., Pro-side A / Pro-side B / Neutral)
+- Provides confidence score and framing explanation
+
+### 2) Credibility Scoring
+- Outputs a 0–100 credibility score
+- Designed for quick trust triage before deep reading
+
+### 3) Manipulation Detector
+- Flags emotionally loaded tactics such as:
+  - Fear amplification
+  - Anger triggers
+  - Urgency pressure
+  - Dehumanizing language
+- Gives understandable explanation for each flag
+
+### 4) Claim-level Fact Check Signals
+- Breaks down article into key claims
+- Surfaces verification status patterns where possible
+
+### 5) ELI15 Summarization
+- Converts dense geopolitical reporting into plain language
+
+### 6) Multi-source Comparison
+- Side-by-side framing analysis across 2–4 related sources
+- Highlights wording and angle divergence
+
+### 7) Analysis History
+- Stores previous scans in Supabase
+- Makes demo + user journey persistent
+
+### 8) Smart Cache
+- Reuses recent analysis for same URL (1-hour freshness window)
+- Improves latency and API efficiency
+
+---
+
+## 🏗️ Architecture
+
+```text
+User/Web or Chrome Extension
+        │
+        ▼
+Frontend (React/Vite) or Extension Popup
+        │
+        ▼
+FastAPI Backend (routers + services)
+   ├─ Scraper service (article extraction)
+   ├─ Groq service (Llama 3 70B analysis)
+   ├─ News service (related articles)
+   └─ Database service (Supabase CRUD + history/cache)
+        │
+        ▼
+Supabase (PostgreSQL)
+```
+
+---
+
+## 🧩 Tech Stack
+
+| Layer | Technology |
+|---|---|
 | Frontend | React 18, Vite, TailwindCSS, Framer Motion |
 | Backend | FastAPI, Python 3.11 |
-| AI | Groq API (Llama 3 70B — free tier) |
+| AI | Groq API (Llama 3 70B) |
 | Database | Supabase (PostgreSQL) |
-| News | NewsAPI.org |
-| Deploy (BE) | Render |
-| Deploy (FE) | Vercel |
+| News Data | NewsAPI.org |
+| Backend Deploy | Render |
+| Frontend Deploy | Vercel |
+| Browser UX | Chrome Extension (Manifest V3) |
 
 ---
 
-## Get API Keys (all free)
+## 📁 Project Structure
 
-### 1. Groq API Key (AI brain)
-1. Go to [console.groq.com](https://console.groq.com)
-2. Sign up → API Keys → Create new key
-3. Copy key → paste as `GROQ_API_KEY`
-
-### 2. Supabase (database)
-1. Go to [supabase.com](https://supabase.com) → New Project
-2. Go to SQL Editor → paste contents of `backend/supabase_schema.sql` → Run
-3. Go to Settings → API → copy `Project URL` and `anon public` key
-4. Set as `SUPABASE_URL` and `SUPABASE_KEY`
-
-### 3. NewsAPI (optional, for related articles)
-1. Go to [newsapi.org](https://newsapi.org) → Get API Key (free)
-2. Set as `NEWS_API_KEY`
+```text
+truthlens/
+├── backend/
+│   ├── main.py
+│   ├── requirements.txt
+│   ├── .env.example
+│   ├── render.yaml
+│   ├── supabase_schema.sql
+│   ├── routers/
+│   │   ├── analyze.py
+│   │   ├── compare.py
+│   │   └── history.py
+│   └── services/
+│       ├── groq_service.py
+│       ├── scraper.py
+│       ├── database.py
+│       └── news_service.py
+├── frontend/
+│   ├── src/
+│   ├── package.json
+│   ├── .env.example
+│   ├── vite.config.js
+│   ├── tailwind.config.js
+│   └── vercel.json
+└── chrome-extension/
+    ├── manifest.json
+    ├── popup.html
+    ├── popup.js
+    ├── content.js
+    └── README.md
+```
 
 ---
 
-## Local Development
+## ⚙️ Environment Variables
 
-### Backend
+### Backend (`backend/.env`)
+- `GROQ_API_KEY=...`
+- `SUPABASE_URL=...`
+- `SUPABASE_KEY=...`
+- `NEWS_API_KEY=...` *(optional but recommended)*
+
+### Frontend (`frontend/.env.local`)
+- `VITE_API_URL=http://localhost:8000` *(or deployed backend URL)*
+
+### Chrome Extension
+- Update `popup.js` API constant to your deployed backend URL if needed.
+
+---
+
+## 🛠️ Local Development
+
+### 1) Backend
+
 ```bash
 cd backend
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-
-# Create .env from template
 cp .env.example .env
-# Fill in your keys in .env
-
+# fill all keys in .env
 uvicorn main:app --reload --port 8000
 ```
-API docs available at: http://localhost:8000/docs
 
-### Frontend
+Backend docs: `http://localhost:8000/docs`
+
+---
+
+### 2) Frontend
+
 ```bash
 cd frontend
 npm install
-
-# Create .env.local
 echo "VITE_API_URL=http://localhost:8000" > .env.local
-
 npm run dev
 ```
-App runs at: http://localhost:5173
+
+Frontend runs at: `http://localhost:5173`
 
 ---
 
-## Deploy to Production
+### 3) Chrome Extension (Unpacked)
+
+1. Open `chrome://extensions`
+2. Enable **Developer mode**
+3. Click **Load unpacked**
+4. Select `chrome-extension/`
+5. Pin TruthLens and use on any open news article
+
+---
+
+## 🌐 Deployment
 
 ### Backend → Render
-1. Push code to GitHub
-2. Go to [render.com](https://render.com) → New Web Service
-3. Connect your GitHub repo, set root directory to `backend/`
-4. Build command: `pip install -r requirements.txt`
-5. Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-6. Add environment variables:
-   - `GROQ_API_KEY`
-   - `SUPABASE_URL`
-   - `SUPABASE_KEY`
-   - `NEWS_API_KEY`
-7. Deploy → copy your Render URL (e.g. `https://truthlens-api.onrender.com`)
+- Root directory: `backend/`
+- Build: `pip install -r requirements.txt`
+- Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- Add env vars: `GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, `NEWS_API_KEY`
 
 ### Frontend → Vercel
-1. Go to [vercel.com](https://vercel.com) → New Project
-2. Import frontend folder from GitHub
-3. Add environment variable:
-   - `VITE_API_URL` = your Render backend URL
-4. Deploy → done!
+- Import `frontend/`
+- Set `VITE_API_URL=<your render backend url>`
+- Deploy
 
 ---
 
-## Features
-- **Bias Detection** — Spectrum scoring (Pro-Israel / Pro-Iran / Neutral etc.) with confidence %
-- **Credibility Score** — 0–100 ring gauge powered by Groq Llama 3
-- **Manipulation Detector** — Flags Fear, Anger, Urgency, Dehumanization phrases
-- **Fact Check** — Claim-by-claim verification status
-- **ELI15** — Simplify complex war news for anyone
-- **Multi-Source Compare** — Side-by-side framing analysis of 2–4 articles
-- **History** — All analyses saved to Supabase, queryable
-- **Smart Cache** — Same URL within 1 hour returns cached result
+## 🎬 Hackathon Demo Script (Winning Pitch Flow)
+
+1. Open a live conflict news URL (Reuters/BBC/Al Jazeera/etc.)
+2. Paste into TruthLens and run analysis
+3. Show:
+   - Credibility score ring
+   - Bias direction meter
+   - Manipulation phrase highlights
+4. Switch to **Compare Sources** and show framing divergence
+5. Use **ELI15** for clarity and accessibility
+6. Open Chrome extension and run in-page quick analysis
+7. Close with:
+
+> “TruthLens doesn’t tell people what to think — it gives them the tools to think critically under information pressure.”
 
 ---
 
-## Demo Flow (Hackathon)
-1. Paste a live BBC/Al Jazeera/Reuters URL about a conflict
-2. Watch the scan animation + loading steps
-3. Show bias meter animating to result
-4. Click flagged manipulation phrases — explain why they're manipulative
-5. Hit "Compare these sources" → show diverging word choices
-6. Click ELI15 → "This is what your 15-year-old sibling needs to know"
-7. Drop line: *"We're not telling people what to think. We're giving them the tools to think for themselves."*
+## 🧪 Suggested Judging Angles
+
+- **Innovation:** Combines bias + manipulation + fact-check signals + explainability
+- **Impact:** Media literacy in high-stakes conflict narratives
+- **Technical Depth:** Multi-surface product (web + extension + backend + AI + DB)
+- **Scalability:** Can expand to elections, climate, finance, health misinformation
+- **UX Clarity:** Fast, visual, and understandable outputs for non-experts
 
 ---
 
-## Project Structure
-```
-truthlens/
-├── backend/
-│   ├── main.py               # FastAPI app
-│   ├── requirements.txt
-│   ├── render.yaml           # Render deploy config
-│   ├── supabase_schema.sql   # Run in Supabase SQL editor
-│   ├── routers/
-│   │   ├── analyze.py        # /api/v1/analyze
-│   │   ├── compare.py        # /api/v1/compare
-│   │   └── history.py        # /api/v1/history
-│   └── services/
-│       ├── groq_service.py   # Groq AI calls
-│       ├── scraper.py        # Article extraction
-│       ├── database.py       # Supabase CRUD
-│       └── news_service.py   # NewsAPI
-└── frontend/
-    ├── src/
-    │   ├── App.jsx
-    │   ├── pages/
-    │   │   ├── HomePage.jsx
-    │   │   ├── ResultPage.jsx
-    │   │   ├── ComparePage.jsx
-    │   │   └── HistoryPage.jsx
-    │   └── components/
-    │       ├── Navbar.jsx
-    │       ├── CredibilityRing.jsx
-    │       ├── BiasMeter.jsx
-    │       ├── ManipulationPanel.jsx
-    │       ├── FactCheckPanel.jsx
-    │       ├── ELI15Panel.jsx
-    │       ├── RelatedSources.jsx
-    │       └── LoadingAnalysis.jsx
-    └── vercel.json
-```
+## 🗺️ Roadmap
+
+- [ ] Multilingual analysis (Arabic/Hindi/Spanish first)
+- [ ] Source-level reliability history charts
+- [ ] Citation-level evidence linking
+- [ ] User accounts + personalized dashboard
+- [ ] Real-time “live narrative drift” monitor
+- [ ] Mobile app version
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repo
+2. Create your feature branch
+3. Commit clearly
+4. Open a PR with screenshots/demo notes
+
+---
+
+## 📜 License
+
+Add your preferred license (MIT recommended for hackathons).
+
+---
+
+## 👥 Team
+
+Built by the TruthLens team at hackathon speed ⚡  
+If this project helped you, star the repo and share feedback.
