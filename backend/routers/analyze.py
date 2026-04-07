@@ -1,144 +1,244 @@
-import re
-from urllib.parse import urlparse
-from services.news_service import search_same_story
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from services.scraper import extract_article, extract_from_html
+from services.groq_service import analyze_article_with_groq, simplify_text, extract_title_from_text
+from services.database import save_analysis, get_analysis_by_url
+from services.news_service import search_same_story, corroborate_claims
+from services.ml_service import run_ml_analysis
 
-def _normalize_domain(d: str) -> str:
-    d = (d or "").lower().strip()
-    if d.startswith("www."):
-        d = d[4:]
-    return d
+router = APIRouter()
 
-def _tokenize(text: str) -> list[str]:
-    stop = {
-        "the","a","an","and","or","but","for","with","from","into","onto","about",
-        "this","that","these","those","was","were","is","are","be","been","being",
-        "have","has","had","will","would","could","should","may","might","not",
-        "as","at","by","to","of","in","on","after","before","during","over","under",
-        "amid","amidst","says","said","report","reports","update","live","breaking"
-    }
-    words = re.findall(r"[a-zA-Z0-9]+", (text or "").lower())
-    return [w for w in words if len(w) > 2 and w not in stop]
 
-def _keyword_set(text: str, max_terms: int = 10) -> set[str]:
-    toks = _tokenize(text)
-    # preserve order, unique
-    seen, out = set(), []
-    for t in toks:
-        if t not in seen:
-            seen.add(t)
-            out.append(t)
-        if len(out) >= max_terms:
-            break
-    return set(out)
+class AnalyzeRequest(BaseModel):
+    url: str
+    use_cache: bool = True
 
-def _is_non_article_url(url: str) -> bool:
-    """
-    Generic URL filter (not outlet-specific).
-    """
-    u = (url or "").lower()
-    bad_fragments = [
-        "/search", "search?", "/tag/", "/tags/", "/topic/", "/topics/",
-        "/video", "/videos", "/live", "/author/", "/authors/", "/category/"
-    ]
-    return any(x in u for x in bad_fragments)
 
-def _title_similarity(a: str, b: str) -> float:
-    """
-    Jaccard overlap over keyword sets.
-    """
-    A = _keyword_set(a, max_terms=12)
-    B = _keyword_set(b, max_terms=12)
-    if not A or not B:
-        return 0.0
-    inter = len(A & B)
-    union = len(A | B)
-    return inter / union if union else 0.0
+class AnalyzeHtmlRequest(BaseModel):
+    url: str
+    html: str
+    use_cache: bool = True
 
-def _build_query(title: str, conflict_region: str) -> str:
-    """
-    Query that generalizes across any article URL.
-    """
-    t = " ".join((title or "").split())
-    r = " ".join((conflict_region or "").split())
 
-    # Prefer title keywords; optionally append region
-    title_kw = " ".join(list(_keyword_set(t, max_terms=8)))
-    region_kw = " ".join(list(_keyword_set(r, max_terms=3)))
+class TextAnalyzeRequest(BaseModel):
+    text: str
+    title: str = "Pasted Text"
+    source: str = "Unknown"
 
-    query = title_kw or t[:90] or r[:90]
-    if region_kw and region_kw not in query:
-        query = f"{query} {region_kw}"
 
-    return query[:120].strip()
+def _merge_ml(result: dict, ml: dict) -> dict:
+    if not ml.get("available"):
+        result["ml_analysis"] = {"available": False}
+        return result
+    result["ml_analysis"] = ml
+    if ml.get("ml_manipulation_score") is not None and "manipulation" in result:
+        gs = result["manipulation"].get("score", 0)
+        ms = ml["ml_manipulation_score"]
+        blended = round(gs * 0.6 + ms * 0.4)
+        result["manipulation"]["score"] = blended
+        result["manipulation"]["ml_score"] = ms
+        result["manipulation"]["level"] = "High" if blended >= 60 else "Medium" if blended >= 35 else "Low"
+    if ml.get("political_bias") and "bias" in result:
+        result["bias"]["ml_political"] = ml["political_bias"]
+    if ml.get("emotions") and "manipulation" in result:
+        result["manipulation"]["dominant_emotion"] = ml["emotions"]["dominant"]
+        result["manipulation"]["emotion_scores"] = ml["emotions"]["scores"]
+    return result
+
 
 def _get_related(title: str, conflict_region: str, source: str) -> list[dict]:
     """
-    Return truly related coverage for ANY news URL:
-    - no hardcoded news outlet/domain logic
-    - generic scoring by title similarity + quality checks
+    Search for related coverage. Falls back to smart curated links
+    when NewsAPI key is missing or returns nothing useful.
     """
-    src_domain = _normalize_domain(source)
-    base_title = (title or "").strip()
-    query = _build_query(base_title, conflict_region)
+    # Use conflict_region if available for better query
+    query_base = conflict_region or " ".join(title.split()[:6])
+    query = query_base[:80]
 
-    # Pull more candidates, then rank
-    candidates = search_same_story(query, exclude_domain=src_domain, limit=12) or []
+    results = search_same_story(query, exclude_domain=source, limit=3)
 
-    ranked = []
-    seen_urls = set()
+    # Filter out the generic "Search for: X" fallback entries — they look bad
+    real_results = [r for r in results if not r.get("title", "").startswith("Search for:")]
 
-    for item in candidates:
-        c_title = (item.get("title") or "").strip()
-        c_url = (item.get("url") or "").strip()
-        c_source = _normalize_domain(item.get("source") or urlparse(c_url).netloc)
+    if real_results:
+        return real_results
 
-        if not c_title or not c_url or not c_url.startswith("http"):
-            continue
-        if c_url in seen_urls:
-            continue
-        if c_title.startswith("Search for:"):
-            continue
-        if _is_non_article_url(c_url):
-            continue
-        if src_domain and c_source and src_domain in c_source:
-            continue  # avoid same publisher echo
-
-        sim = _title_similarity(base_title, c_title)
-
-        # light quality bonus (trusted flag from news_service if present)
-        trusted_bonus = 0.08 if item.get("trusted") else 0.0
-        score = sim + trusted_bonus
-
-        # keep only minimally related
-        if sim >= 0.12:
-            ranked.append((score, item))
-            seen_urls.add(c_url)
-
-    ranked.sort(key=lambda x: x[0], reverse=True)
-    best = [x[1] for x in ranked[:3]]
-
-    if best:
-        return best
-
-    # Generic fallback (not tied to specific story parser assumptions)
-    topic = (query or base_title or conflict_region or "latest news").replace(" ", "+")
+    # Build smart curated links based on the topic
+    topic = (conflict_region or query).replace(" ", "+")
     return [
         {
-            "source": "Google News",
-            "title": f"Search coverage: {base_title[:60] or 'this topic'}",
-            "url": f"https://news.google.com/search?q={topic}",
-            "description": "Search broad news coverage for this topic.",
+            "source": "BBC News",
+            "title": f"BBC coverage: {conflict_region or title[:60]}",
+            "url": f"https://www.bbc.com/search?q={topic}",
+            "description": "Search BBC News for related coverage",
         },
         {
-            "source": "Bing News",
-            "title": f"Bing News coverage: {base_title[:60] or 'this topic'}",
-            "url": f"https://www.bing.com/news/search?q={topic}",
-            "description": "Alternative news search results for this topic.",
+            "source": "Al Jazeera",
+            "title": f"Al Jazeera coverage: {conflict_region or title[:60]}",
+            "url": f"https://www.aljazeera.com/search/{topic}",
+            "description": "Search Al Jazeera for related coverage",
         },
         {
-            "source": "DuckDuckGo News",
-            "title": f"DuckDuckGo news: {base_title[:60] or 'this topic'}",
-            "url": f"https://duckduckgo.com/?q={topic}&iar=news&ia=news",
-            "description": "Independent news search for corroborating reports.",
+            "source": "Reuters",
+            "title": f"Reuters coverage: {conflict_region or title[:60]}",
+            "url": f"https://www.reuters.com/search/news?blob={topic}",
+            "description": "Search Reuters for related coverage",
         },
     ]
+
+
+async def _run_analysis(article: dict, url: str) -> dict:
+    scrape_failed = article.get("scrape_failed", False)
+
+    try:
+        ai_result = analyze_article_with_groq(
+            title=article["title"],
+            content=article["content"],
+            url=url,
+            scrape_failed=scrape_failed,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
+
+    result = {**article, **ai_result, "from_cache": False, "scrape_failed": scrape_failed}
+
+    # ML analysis — always run; ml_service uses Groq fallback when HF unavailable
+    content_for_ml = article.get("content", "")
+    if not content_for_ml and scrape_failed:
+        # Build a proxy text from title + AI result summary for ML
+        content_for_ml = result.get("title", "") + " " + result.get("summary_eli15", "")
+    try:
+        ml = run_ml_analysis(content_for_ml if len(content_for_ml) > 50 else result.get("title", "news article"))
+        result = _merge_ml(result, ml)
+    except Exception as e:
+        print(f"ML error (non-fatal): {e}")
+        result["ml_analysis"] = {"available": False}
+
+    # Corroborate fact-check claims with real independent news sources
+    # This is the key trust-building feature — proves claims are grounded in reality
+    try:
+        claims = result.get("fact_check", {}).get("verifiable_claims", [])
+        if claims:
+            region = result.get("conflict_region", "")
+            enriched_claims = corroborate_claims(claims, region)
+            result["fact_check"]["verifiable_claims"] = enriched_claims
+    except Exception as e:
+        print(f"Corroboration error (non-fatal): {e}")
+
+    # Related coverage — always try, never leave empty
+    try:
+        result["related_sources"] = _get_related(
+            title=result.get("title", ""),
+            conflict_region=result.get("conflict_region", ""),
+            source=article.get("source", ""),
+        )
+    except Exception:
+        result["related_sources"] = []
+
+    save_analysis(result)
+    return result
+
+
+@router.post("/analyze")
+async def analyze_url(req: AnalyzeRequest):
+    if req.use_cache:
+        cached = get_analysis_by_url(req.url)
+        if cached:
+            cached["from_cache"] = True
+            return cached
+
+    try:
+        article = extract_article(req.url)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return await _run_analysis(article, req.url)
+
+
+@router.post("/analyze/html")
+async def analyze_html(req: AnalyzeHtmlRequest):
+    if req.use_cache:
+        cached = get_analysis_by_url(req.url)
+        if cached:
+            cached["from_cache"] = True
+            return cached
+
+    if not req.html or len(req.html) < 500:
+        raise HTTPException(status_code=422, detail="HTML content too short or empty.")
+
+    try:
+        article = extract_from_html(req.html, req.url)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return await _run_analysis(article, req.url)
+
+
+@router.post("/analyze/text")
+async def analyze_text(req: TextAnalyzeRequest):
+    if len(req.text.strip()) < 100:
+        raise HTTPException(status_code=422, detail="Text too short. Please paste at least 100 characters.")
+
+    # Step 1: Extract a real title from the pasted text using Groq
+    real_title = req.title
+    if req.title == "Pasted Text" or req.title == "Unknown":
+        try:
+            real_title = extract_title_from_text(req.text)
+        except Exception:
+            real_title = req.text[:80].strip().rstrip('.') + "..."
+
+    try:
+        ai_result = analyze_article_with_groq(
+            title=real_title,
+            content=req.text,
+            url="text-input",
+            scrape_failed=False,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
+
+    # Use AI-derived title if Groq returned a better one
+    final_title = ai_result.pop("extracted_title", None) or real_title
+
+    result = {
+        "title": final_title,
+        "source": req.source if req.source != "Unknown" else "Pasted Article",
+        "content": req.text,
+        "url": "text-input",
+        "word_count": len(req.text.split()),
+        **ai_result,
+        "from_cache": False,
+        "scrape_failed": False,
+    }
+
+    # ML analysis
+    try:
+        ml = run_ml_analysis(req.text)
+        result = _merge_ml(result, ml)
+    except Exception:
+        result["ml_analysis"] = {"available": False}
+
+    # Related coverage based on AI-detected region/topic
+    try:
+        result["related_sources"] = _get_related(
+            title=result["title"],
+            conflict_region=result.get("conflict_region", ""),
+            source="",
+        )
+    except Exception:
+        result["related_sources"] = []
+
+    # Save to history — was missing before!
+    save_analysis(result)
+
+    return result
+
+
+@router.post("/simplify")
+async def simplify(req: TextAnalyzeRequest):
+    try:
+        return {"simplified": simplify_text(req.title, req.text)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
