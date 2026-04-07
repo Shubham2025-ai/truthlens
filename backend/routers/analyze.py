@@ -102,15 +102,16 @@ async def _run_analysis(article: dict, url: str) -> dict:
 
     result = {**article, **ai_result, "from_cache": False, "scrape_failed": scrape_failed}
 
-    # ML analysis
-    if not scrape_failed and len(article.get("content", "")) > 200:
-        try:
-            ml = run_ml_analysis(article["content"])
-            result = _merge_ml(result, ml)
-        except Exception as e:
-            print(f"ML error (non-fatal): {e}")
-            result["ml_analysis"] = {"available": False}
-    else:
+    # ML analysis — always run; ml_service uses Groq fallback when HF unavailable
+    content_for_ml = article.get("content", "")
+    if not content_for_ml and scrape_failed:
+        # Build a proxy text from title + AI result summary for ML
+        content_for_ml = result.get("title", "") + " " + result.get("summary_eli15", "")
+    try:
+        ml = run_ml_analysis(content_for_ml if len(content_for_ml) > 50 else result.get("title", "news article"))
+        result = _merge_ml(result, ml)
+    except Exception as e:
+        print(f"ML error (non-fatal): {e}")
         result["ml_analysis"] = {"available": False}
 
     # Related coverage — always try, never leave empty
