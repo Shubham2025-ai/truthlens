@@ -4,7 +4,7 @@
 
 **AI-powered news bias detector, credibility scorer & manipulation analyzer**
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-truthlens.vercel.app-c0392b?style=for-the-badge)](https://truthlens.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-truthlens.vercel.app-c0392b?style=for-the-badge)](https://truthlens-ecru.vercel.app/)
 [![API](https://img.shields.io/badge/API-truthlens--api.onrender.com-2c3e50?style=for-the-badge)](https://truthlens-api.onrender.com/docs)
 [![License](https://img.shields.io/badge/License-MIT-27ae60?style=for-the-badge)](#)
 
