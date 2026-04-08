@@ -46,82 +46,43 @@ def _merge_ml(result: dict, ml: dict) -> dict:
     return result
 
 
-SEARCH_FALLBACK_PREFIXES = (
-    "Search for:",
-    "BBC coverage:",
-    "Al Jazeera coverage:",
-    "Reuters coverage:",
-    "Search BBC",
-    "Search AP",
-    "Search Reuters",
-)
-
-def _is_real_article(source: dict) -> bool:
-    """
-    A real article has a non-search URL and a title that doesn't look like
-    one of our curated fallback links. Search-page URLs contain /search or
-    query params like ?q= or ?query= or ?blob=.
-    """
-    title = source.get("title", "")
-    url   = source.get("url", "")
-
-    if any(title.startswith(prefix) for prefix in SEARCH_FALLBACK_PREFIXES):
-        return False
-
-    # Reject search-page URLs — they are not articles
-    search_indicators = ["/search", "?q=", "?query=", "?blob=", "search?"]
-    if any(ind in url for ind in search_indicators):
-        return False
-
-    # Must have a real-looking URL and a non-empty title
-    if not url.startswith("http") or not title.strip():
-        return False
-
-    return True
-
-
 def _get_related(title: str, conflict_region: str, source: str) -> list[dict]:
     """
-    Search for related coverage via NewsAPI.
-    Falls back to clearly-labelled search links when no real articles found.
+    Search for related coverage. Falls back to smart curated links
+    when NewsAPI key is missing or returns nothing useful.
     """
+    # Use conflict_region if available for better query
     query_base = conflict_region or " ".join(title.split()[:6])
     query = query_base[:80]
 
-    results = search_same_story(query, exclude_domain=source, limit=5)
+    results = search_same_story(query, exclude_domain=source, limit=3)
 
-    # Keep only genuine article results — not curated search links
-    real_articles = [r for r in results if _is_real_article(r)][:3]
+    # Filter out the generic "Search for: X" fallback entries — they look bad
+    real_results = [r for r in results if not r.get("title", "").startswith("Search for:")]
 
-    if real_articles:
-        return real_articles
+    if real_results:
+        return real_results
 
-    # No real articles — return search links with is_search=True flag
-    # so the frontend can render them differently
+    # Build smart curated links based on the topic
     topic = (conflict_region or query).replace(" ", "+")
-    import urllib.parse
-    enc = urllib.parse.quote(conflict_region or query)
     return [
         {
             "source": "BBC News",
-            "title": f"Search for: {conflict_region or title[:50]}",
+            "title": f"BBC coverage: {conflict_region or title[:60]}",
             "url": f"https://www.bbc.com/search?q={topic}",
             "description": "Search BBC News for related coverage",
-            "is_search": True,
         },
         {
             "source": "Al Jazeera",
-            "title": f"Search for: {conflict_region or title[:50]}",
-            "url": f"https://www.aljazeera.com/search/{enc}",
+            "title": f"Al Jazeera coverage: {conflict_region or title[:60]}",
+            "url": f"https://www.aljazeera.com/search/{topic}",
             "description": "Search Al Jazeera for related coverage",
-            "is_search": True,
         },
         {
             "source": "Reuters",
-            "title": f"Search for: {conflict_region or title[:50]}",
+            "title": f"Reuters coverage: {conflict_region or title[:60]}",
             "url": f"https://www.reuters.com/search/news?blob={topic}",
             "description": "Search Reuters for related coverage",
-            "is_search": True,
         },
     ]
 
