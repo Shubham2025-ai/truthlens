@@ -334,7 +334,7 @@ MIT
 
 <div align="center">
 
-Built for Social Impact AI Hackathon 2026
+Built for HackVenture 2026
 
 [truthlens.vercel.app](https://truthlens.vercel.app)
 
