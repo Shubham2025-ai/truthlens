@@ -4,85 +4,127 @@
 
 **AI-powered news bias detector, credibility scorer & manipulation analyzer**
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-truthlens.vercel.app-c0392b?style=for-the-badge)](https://truthlens-ecru.vercel.app/)
-[![API](https://img.shields.io/badge/API-truthlens--api.onrender.com-2c3e50?style=for-the-badge)](https://truthlens-api.onrender.com/docs)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-truthlens.vercel.app-c0392b?style=for-the-badge)](https://truthlens.vercel.app)
+[![API Docs](https://img.shields.io/badge/API%20Docs-onrender.com/docs-2c3e50?style=for-the-badge)](https://truthlens-uopu.onrender.com/docs)
 [![License](https://img.shields.io/badge/License-MIT-27ae60?style=for-the-badge)](#)
 
-Paste any news article URL. Get bias score, credibility rating, manipulation alerts, and fact checks — in under 15 seconds. Backed by AllSides, Ad Fontes Media & Media Bias/Fact Check published research.
+Paste any news article URL. Get bias score, credibility rating, manipulation alerts, fact checks, and live corroboration from independent sources — in under 15 seconds. Backed by AllSides, Ad Fontes Media & Media Bias/Fact Check published research.
+
+**"We don't tell you what to think. We give you the tools to think for yourself."**
 
 </div>
 
 ---
 
-## What TruthLens Does
+## The Problem
 
-74% of people who share misinformation do so unknowingly. TruthLens gives everyone the tool to be in the other 26% — free, no signup, any article, anywhere.
+74% of people who share misinformation do so unknowingly. During active conflicts — Gaza, Ukraine, Kashmir — information becomes a weapon. Existing fact-checkers take days, cover only viral claims, and have no manipulation detection. TruthLens solves this in seconds, for any article, for free.
+
+---
+
+## What TruthLens Does
 
 | Feature | What it shows |
 |---|---|
-| **Bias Detection** | Left / Right / Pro-X label with confidence %, evidence quotes from the article |
-| **Credibility Score** | 0–100 ring gauge anchored to AllSides + MBFC + Ad Fontes database |
-| **Manipulation Analysis** | Flagged phrases by type (Fear / Anger / Urgency / Dehumanization) + emotion scores |
-| **Claim vs Evidence** | Expandable fact-check cards — article claim vs AI assessment side by side |
+| **Verdict** | Instant ✓ / ⚠ / ✗ — Trustworthy, Caution, or Unreliable |
+| **Bias Detection** | Specific label (Pro-Palestine, Left-leaning, Neutral etc.) with confidence % and quoted evidence from the article |
+| **Credibility Score** | 0–100 anchored to AllSides + MBFC + Ad Fontes Media published ratings |
+| **Manipulation Analysis** | Flagged phrases by type: Fear, Anger, Urgency, Dehumanization, Propaganda |
+| **Fact Check — Live Corroboration** | Each claim checked against real-time independent news from Reuters, BBC, AP |
 | **AI Summary** | 3-sentence plain English explanation + what context is missing |
 | **Evidence & References** | Clickable AllSides / MBFC / Ad Fontes links proving every score |
-| **Legal Compliance** | Maps findings to Indian IT Act §66, §69A, IT Rules 2021, CPA 2019 |
-| **ML Model Analysis** | Sentiment, 7 emotions, political lean from HuggingFace transformer models |
+| **Sentiment & Emotion Analysis** | Positive/negative/neutral % + 7 emotion scores from ML analysis |
 | **Media Fingerprint** | 6-dimension radar chart derived entirely from analysis data |
-| **Multi-Source Compare** | Same story, 2–4 sources, side-by-side bias and word choice differences |
+| **Multi-Source Compare** | Same story, 2–4 sources, side-by-side bias and framing differences |
 | **PDF Export** | Professional branded report with all analysis data |
-| **Share Link** | Unique URL per analysis stored in Supabase |
 | **Chrome Extension** | Analyze any article without leaving the page |
-| **History** | All past analyses with search, filter, view, delete |
+| **History** | All past analyses stored in database with search and filter |
 
 ---
 
 ## Tech Stack
 
 ```
-Frontend          React 18 + Vite + TailwindCSS + Framer Motion  →  Vercel
-Backend           FastAPI Python 3.11 + Uvicorn                  →  Render
-Primary AI        Groq API — Llama 3.3 70B Versatile
-ML Models         HuggingFace Inference API (3 transformer models)
-Database          Supabase (PostgreSQL + JSONB)
-Scraping          BeautifulSoup4 + Jina Reader API + CORS proxy
-News              NewsAPI.org (optional)
+Frontend     React 18 + Vite + TailwindCSS + Framer Motion  →  Vercel
+Backend      FastAPI Python 3.11 + Uvicorn                  →  Render
+Database     PostgreSQL (Render)                             →  Render
+Primary AI   Groq API — Llama 3.3 70B Versatile
+ML Analysis  Groq linguistic analysis (sentiment, emotion, political lean)
+Scraping     BeautifulSoup4 + Jina Reader API + CORS proxy fallback
+News         NewsAPI.org (related articles + live corroboration)
 ```
-
-### HuggingFace Models
-
-| Model | Purpose | Training data |
-|---|---|---|
-| `cardiffnlp/twitter-roberta-base-sentiment-latest` | Sentiment (positive / negative / neutral) | 124M tweets |
-| `j-hartmann/emotion-english-distilroberta-base` | 7 emotions (anger, fear, disgust, sadness, surprise, joy, neutral) | 20,000+ texts |
-| `valurank/distilroberta-base-political-tweets` | Political lean (left / center / right) | Political tweet dataset |
-
-### Source Credibility Database
-
-50+ outlets rated by three independent research organisations:
-
-- **[AllSides](https://www.allsides.com/media-bias/ratings)** — Left / Lean Left / Center / Lean Right / Right spectrum
-- **[Ad Fontes Media](https://adfontesmedia.com)** — 2D reliability vs bias chart
-- **[Media Bias/Fact Check](https://mediabiasfactcheck.com)** — Factual reporting rated Very High to Very Low
-
-Groq scores are anchored to this database ±15 points. RT cannot score above 37. AP News cannot score below 73.
 
 ---
 
 ## Article Extraction — 4-Layer Fallback
 
-| Layer | Method | Coverage |
+Never fails. Always returns a result.
+
+| Layer | Method | What it handles |
 |---|---|---|
-| 1 | Direct fetch with 6 user agents + 30 site-specific CSS selectors | ~60% of sites |
-| 2 | [Jina Reader API](https://r.jina.ai) — renders JavaScript, bypasses bot detection | ~25% more |
-| 3 | Browser-side fetch via CORS proxy (server never blocked) | ~10% more |
-| 4 | Groq source-reputation analysis from URL + title | Always works |
+| 1 | Direct fetch — 6 user agents + 30 site-specific CSS selectors | Most news sites |
+| 2 | Jina Reader API (`r.jina.ai`) — renders JavaScript | Bot-protected & JS-heavy sites |
+| 3 | Browser-side fetch via CORS proxy | Sites that block server IPs |
+| 4 | Groq source-reputation analysis from URL + title | Paywalled & fully blocked sites |
+
+---
+
+## Source Credibility Database
+
+50+ outlets with ratings from three independent research organisations:
+
+| Organisation | What they rate |
+|---|---|
+| [AllSides](https://www.allsides.com/media-bias/ratings) | Left / Lean Left / Center / Lean Right / Right |
+| [Ad Fontes Media](https://adfontesmedia.com) | Reliability vs political bias (2D chart) |
+| [Media Bias/Fact Check](https://mediabiasfactcheck.com) | Factual reporting — Very High to Very Low |
+
+Groq scores are anchored to this database **±15 points**. RT cannot score above 37. AP News cannot score below 73. Every score is citable.
+
+**Real examples:**
+
+| Source | Score | Bias |
+|---|---|---|
+| AP News | 88–92 | Neutral |
+| Reuters | 86–90 | Neutral |
+| BBC | 79–84 | Center |
+| Guardian | 74–79 | Left-leaning |
+| Al Jazeera | 58–66 | Pro-Palestine |
+| Fox News (opinion) | 38–48 | Right-leaning |
+| RT (Russia Today) | 18–26 | Pro-Russia |
+
+---
+
+## Score Reference
+
+### Credibility (0–100)
+
+| Range | Label |
+|---|---|
+| 80–100 | High — wire agencies, named sources, verifiable data |
+| 60–79 | Moderate — quality press with editorial lean |
+| 40–59 | Low — partisan outlets, advocacy journalism |
+| 20–39 | Very Low — tabloids, partisan blogs |
+| 0–19 | Unreliable — state propaganda, known disinformation |
+
+### Bias Labels
+
+`Neutral` · `Center` · `Left-leaning` · `Right-leaning` · `Pro-Israel` · `Pro-Palestine` · `Pro-Russia` · `Pro-Ukraine` · `Pro-China` · `Pro-India` · `Pro-US` · `Pro-Iran` · `Nationalist`
+
+### Manipulation (0–100)
+
+| Range | Level |
+|---|---|
+| 0–20 | Low — dry factual language |
+| 21–45 | Low-Medium — some emotional framing |
+| 46–65 | Medium — advocacy journalism |
+| 66–100 | High — propaganda-level manipulation |
 
 ---
 
 ## API Endpoints
 
-Base URL: `https://truthlens-api.onrender.com`  
+Base URL: `https://truthlens-uopu.onrender.com`
 Interactive docs: `/docs`
 
 | Method | Endpoint | Description |
@@ -91,11 +133,11 @@ Interactive docs: `/docs`
 | `POST` | `/api/v1/analyze/html` | Analyze by raw HTML (browser-sent) |
 | `POST` | `/api/v1/analyze/text` | Analyze pasted article text |
 | `POST` | `/api/v1/compare` | Compare 2–4 article URLs |
-| `GET`  | `/api/v1/history` | Recent analyses from Supabase |
-| `GET`  | `/api/v1/analysis/{id}` | Get analysis by ID |
+| `GET` | `/api/v1/history` | Recent analyses |
+| `GET` | `/api/v1/analysis/{id}` | Get analysis by ID |
 | `DELETE` | `/api/v1/analysis/{id}` | Delete from history |
-| `GET`  | `/api/v1/stats` | Total analysis count |
-| `GET`  | `/health` | Health check |
+| `GET` | `/api/v1/stats` | Total analysis count |
+| `GET` | `/health` | Health check |
 
 ---
 
@@ -106,76 +148,57 @@ Interactive docs: `/docs`
 - Node.js 18+
 - Python 3.11+
 - [Groq API key](https://console.groq.com) — free
-- [Supabase account](https://supabase.com) — free
-- [HuggingFace token](https://huggingface.co/settings/tokens) — optional, enables real ML models
+- PostgreSQL database (local or [Render](https://render.com))
 - [NewsAPI key](https://newsapi.org) — optional, for related articles
 
-### 1. Clone & configure backend
+### Backend
 
 ```bash
-git clone https://github.com/your-username/truthlens.git
-cd truthlens/backend
-
+cd backend
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 cp .env.example .env
-```
+# Fill in GROQ_API_KEY and DATABASE_URL
 
-Edit `.env`:
-
-```env
-GROQ_API_KEY=your_groq_key_here
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your_supabase_anon_key
-HF_API_KEY=hf_your_token_here        # optional
-NEWS_API_KEY=your_newsapi_key         # optional
-```
-
-### 2. Set up Supabase
-
-1. Go to [supabase.com](https://supabase.com) → New Project
-2. SQL Editor → paste contents of `backend/supabase_schema.sql` → Run
-3. Settings → API → copy Project URL and anon public key
-
-### 3. Run backend
-
-```bash
 uvicorn main:app --reload --port 8000
 ```
 
-API docs at: http://localhost:8000/docs
+API docs at: `http://localhost:8000/docs`
 
-### 4. Run frontend
+### Frontend
 
 ```bash
-cd ../frontend
+cd frontend
 npm install
 echo "VITE_API_URL=http://localhost:8000" > .env.local
 npm run dev
 ```
 
-App at: http://localhost:5173
+App at: `http://localhost:5173`
 
 ---
 
-## Deploy to Production
+## Deployment
 
 ### Backend → Render
 
-1. Push code to GitHub
-2. [render.com](https://render.com) → New Web Service → connect repo
+1. Push to GitHub
+2. Render → **New Web Service** → connect repo
 3. **Root Directory:** `backend`
 4. **Runtime:** Python 3.11
-5. **Build command:** `pip install -r requirements.txt`
-6. **Start command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
-7. **Environment variables:** `GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, `HF_API_KEY`, `NEWS_API_KEY`
-8. **Python version:** set `PYTHON_VERSION=3.11.9` in env vars
+5. **Build:** `pip install -r requirements.txt`
+6. **Start:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
+7. **Environment variables:**
+   - `GROQ_API_KEY` — from [console.groq.com](https://console.groq.com)
+   - `DATABASE_URL` — Internal URL from your Render PostgreSQL database
+   - `NEWS_API_KEY` — optional, from [newsapi.org](https://newsapi.org)
+8. Create a **PostgreSQL** database on Render → copy Internal Database URL → set as `DATABASE_URL`
 
 ### Frontend → Vercel
 
-1. [vercel.com](https://vercel.com) → New Project → import frontend folder
+1. Vercel → **New Project** → import frontend folder
 2. Add env var: `VITE_API_URL=https://your-render-url.onrender.com`
 3. Deploy
 
@@ -193,49 +216,44 @@ App at: http://localhost:5173
 ```
 truthlens/
 ├── backend/
-│   ├── main.py                   # FastAPI app entry point
-│   ├── requirements.txt
-│   ├── render.yaml               # Render deployment config
-│   ├── supabase_schema.sql       # Run once in Supabase SQL editor
-│   ├── .python-version           # 3.11.9
+│   ├── main.py                     # FastAPI app + DB init on startup
+│   ├── requirements.txt            # psycopg2-binary, groq, fastapi...
+│   ├── render.yaml
 │   ├── routers/
-│   │   ├── analyze.py            # /analyze, /analyze/html, /analyze/text
-│   │   ├── compare.py            # /compare
-│   │   └── history.py            # /history, /stats, /analysis/{id}
+│   │   ├── analyze.py              # /analyze, /analyze/html, /analyze/text
+│   │   ├── compare.py              # /compare — 4-layer extraction per URL
+│   │   └── history.py              # /history, /stats, /analysis/{id}
 │   └── services/
-│       ├── groq_service.py       # Groq LLM + source database + title extraction
-│       ├── ml_service.py         # HuggingFace models + Groq ML fallback
-│       ├── scraper.py            # 4-layer article extraction
-│       ├── database.py           # Supabase CRUD + cache
-│       └── news_service.py       # NewsAPI + smart fallback links
+│       ├── groq_service.py         # Groq LLM — bias, credibility, facts, ML
+│       ├── ml_service.py           # Sentiment, emotion, political lean via Groq
+│       ├── scraper.py              # 4-layer article extraction
+│       ├── database.py             # PostgreSQL CRUD via psycopg2
+│       └── news_service.py         # NewsAPI + claim corroboration
 │
 ├── frontend/
 │   └── src/
-│       ├── App.jsx               # Routes
-│       ├── utils/api.js          # smartAnalyze, analyzeText, deleteAnalysis
+│       ├── App.jsx
+│       ├── utils/api.js            # smartAnalyze, analyzeText, compareUrls
 │       ├── styles/global.css
 │       ├── pages/
-│       │   ├── HomePage.jsx      # Landing + analysis input
-│       │   ├── ResultPage.jsx    # 10-section analysis result
-│       │   ├── ComparePage.jsx   # Multi-source comparison
-│       │   ├── HistoryPage.jsx   # Past analyses + search
-│       │   └── SharedResultPage.jsx  # /result/:id shareable links
+│       │   ├── HomePage.jsx        # Landing + URL input + live feed
+│       │   ├── ResultPage.jsx      # 9-section analysis result
+│       │   ├── ComparePage.jsx     # Multi-source comparison
+│       │   └── HistoryPage.jsx     # Past analyses with search + delete
 │       └── components/
 │           ├── Navbar.jsx
-│           ├── LoadingAnalysis.jsx     # 8-step progress animation
+│           ├── LoadingAnalysis.jsx     # 9-step progress animation
+│           ├── ErrorBoundary.jsx       # Crash recovery
 │           ├── CredibilityRing.jsx     # Animated ring + DB baseline
 │           ├── BiasMeter.jsx           # Spectrum bar + evidence quotes
-│           ├── ManipulationPanel.jsx   # Flagged phrases + emotions
-│           ├── ClaimEvidencePanel.jsx  # Claim vs evidence side-by-side
+│           ├── ManipulationPanel.jsx   # Flagged phrases + emotion detection
+│           ├── LiveCorroboration.jsx   # Claim vs real news side-by-side
 │           ├── ELI15Panel.jsx          # AI Summary + missing context
-│           ├── TrustEvidence.jsx       # AllSides/MBFC refs + evidence
-│           ├── CompliancePanel.jsx     # IT Act + Consumer Protection
+│           ├── TrustEvidence.jsx       # AllSides/MBFC refs + bias evidence
 │           ├── MLInsights.jsx          # Sentiment + emotion + political bars
 │           ├── MediaFingerprint.jsx    # 6-dimension radar chart
-│           ├── ShareCard.jsx           # Tweet/WhatsApp/SVG download
 │           ├── RelatedSources.jsx      # Related articles + search fallback
-│           ├── Skeletons.jsx           # Loading skeleton components
-│           └── ErrorBoundary.jsx
+│           └── Skeletons.jsx           # Loading skeleton components
 │
 └── chrome-extension/
     ├── manifest.json
@@ -246,78 +264,59 @@ truthlens/
 
 ---
 
-## Score Reference
-
-### Credibility (0–100)
-
-| Range | Label | Examples |
-|---|---|---|
-| 80–100 | High Credibility | AP News (90), Reuters (88), AFP (86) |
-| 60–79 | Moderate | BBC (82), Guardian (76), NYT (78) |
-| 40–59 | Low | Al Jazeera (63), Times of Israel (61) |
-| 20–39 | Very Low | Fox News opinion (42), Daily Mail (30) |
-| 0–19 | Unreliable | RT (22), CGTN (19), PressTV (15) |
-
-### Bias Labels
-
-`Neutral` · `Center` · `Left-leaning` · `Right-leaning` · `Pro-Israel` · `Pro-Palestine` · `Pro-Russia` · `Pro-Ukraine` · `Pro-China` · `Pro-India` · `Pro-US` · `Pro-Iran` · `Nationalist` · `Partisan`
-
-### Manipulation (0–100)
-
-| Range | Level |
-|---|---|
-| 0–20 | Low — dry factual language |
-| 21–45 | Low-Medium — some emotional framing |
-| 46–65 | Medium — advocacy journalism |
-| 66–100 | High — propaganda-level manipulation |
-
----
-
 ## Environment Variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `GROQ_API_KEY` | ✅ Yes | [console.groq.com](https://console.groq.com) |
-| `SUPABASE_URL` | ✅ Yes | Supabase project URL |
-| `SUPABASE_KEY` | ✅ Yes | Supabase anon public key |
-| `HF_API_KEY` | Optional | HuggingFace token — enables real ML models |
-| `NEWS_API_KEY` | Optional | [newsapi.org](https://newsapi.org) — related articles |
+| `GROQ_API_KEY` | ✅ Yes | From [console.groq.com](https://console.groq.com) — free |
+| `DATABASE_URL` | ✅ Yes | PostgreSQL connection string |
+| `NEWS_API_KEY` | Optional | From [newsapi.org](https://newsapi.org) — related articles |
 | `VITE_API_URL` | Frontend | Your Render backend URL |
 
 ---
 
-## Legal Compliance (India)
+## How It Works — The Trust Chain
 
-TruthLens automatically maps analysis findings to Indian law:
-
-| Law | When flagged |
-|---|---|
-| **IT Act §66** | Disputed claims detected, very low credibility, or state media source |
-| **IT Act §69A** | High manipulation (70+/100), 5+ emotional phrases, high ML fear score |
-| **IT Rules 2021** | Medium/High manipulation + strong bias (70%+ confidence) |
-| **CPA 2019** | False claims + score below 50 + biased framing without opposing view |
-
-Under IT Rules 2021, platforms must act within **36 hours** of content being flagged. TruthLens provides the automated detection layer that makes this enforcement possible.
+```
+URL Input
+    ↓
+4-Layer Extraction (never fails)
+    ↓
+Groq Llama 3.3 70B
+    ├── Bias label + confidence + quoted evidence
+    ├── Credibility score (anchored to AllSides/MBFC/Ad Fontes ±15)
+    ├── Manipulation phrases + emotional tone
+    ├── Fact-check claims with status
+    └── ML scores (sentiment, emotion, political lean)
+    ↓
+Source Database Cross-reference
+    ├── AllSides published rating
+    ├── MBFC factual reporting level
+    └── Ad Fontes Media classification
+    ↓
+Live Corroboration (NewsAPI)
+    └── Independent news sources per claim
+    ↓
+Result — 9 sections, every score citable
+```
 
 ---
 
 ## Why TruthLens vs Existing Tools
 
-| | TruthLens | Snopes / FactCheck.org | Social media labels | MBFC |
+| | TruthLens | Snopes | Social media labels | MBFC |
 |---|---|---|---|---|
-| Speed | Under 15 seconds | Days to weeks | Hours to days | Manual |
-| Coverage | Any article, any URL | ~50 claims/day | Only viral posts | Outlet ratings only |
-| Bias detection | ✅ Yes | ❌ No | ❌ No | ✅ Partial |
-| Manipulation | ✅ Yes | ❌ No | ❌ No | ❌ No |
-| Evidence cited | ✅ Clickable refs | ✅ Yes | ❌ No | ✅ Partial |
-| Free | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
-| Real-time | ✅ Yes | ❌ No | ❌ No | ❌ No |
+| Speed | **Under 15 seconds** | Days to weeks | Hours | Manual |
+| Any article | **✓ Any URL** | ~50/day | Viral only | Outlet only |
+| Bias detection | **✓** | ✗ | ✗ | ✓ partial |
+| Manipulation | **✓** | ✗ | ✗ | ✗ |
+| Live corroboration | **✓** | ✓ | ✗ | ✗ |
+| Evidence cited | **✓ Clickable** | ✓ | ✗ | ✓ |
+| Free | **✓** | ✓ | ✓ | ✓ |
 
 ---
 
 ## Contributing
-
-Pull requests are welcome. For major changes, open an issue first.
 
 ```bash
 git checkout -b feature/your-feature
@@ -329,15 +328,13 @@ git push origin feature/your-feature
 
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT
 
 ---
 
 <div align="center">
 
-Built for the Social Impact AI Hackathon 2026
-
-**"We don't tell you what to think. We give you the tools to think for yourself."**
+Built for Social Impact AI Hackathon 2026
 
 [truthlens.vercel.app](https://truthlens.vercel.app)
 
