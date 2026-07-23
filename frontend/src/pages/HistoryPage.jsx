@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Clock, ExternalLink, Trash2, Eye, TrendingUp, Search, X, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react'
+import {
+  Clock, ExternalLink, Trash2, Eye,
+  Search, X, AlertTriangle, BarChart2
+} from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getHistory, getStats, deleteAnalysis, getAnalysisById } from '../utils/api.js'
-import CredibilityRing from '../components/CredibilityRing.jsx'
-import BiasMeter from '../components/BiasMeter.jsx'
-import FactCheckPanel from '../components/FactCheckPanel.jsx'
-import ELI15Panel from '../components/ELI15Panel.jsx'
+import CredibilityRing   from '../components/CredibilityRing.jsx'
+import BiasMeter         from '../components/BiasMeter.jsx'
 import ManipulationPanel from '../components/ManipulationPanel.jsx'
+import ELI15Panel        from '../components/ELI15Panel.jsx'
 
 function scoreColor(s) {
   return s >= 75 ? '#2ecc71' : s >= 50 ? '#f39c12' : '#e74c3c'
@@ -17,7 +19,7 @@ function scoreColor(s) {
 function ConfirmDialog({ onConfirm, onCancel }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-6"
-      style={{ background: 'rgba(0,0,0,0.7)' }}
+      style={{ background: 'rgba(0,0,0,0.75)' }}
       onClick={onCancel}>
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
@@ -33,7 +35,7 @@ function ConfirmDialog({ onConfirm, onCancel }) {
           <div className="text-white font-medium">Delete this analysis?</div>
         </div>
         <p className="text-white/40 text-sm mb-5 leading-relaxed">
-          This will permanently remove it from your history and cannot be undone.
+          This will permanently remove it from history and cannot be undone.
         </p>
         <div className="flex gap-3">
           <button onClick={onConfirm}
@@ -51,7 +53,7 @@ function ConfirmDialog({ onConfirm, onCancel }) {
 }
 
 function ResultDrawer({ analysisId, onClose }) {
-  const [data, setData] = useState(null)
+  const [data,    setData]    = useState(null)
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
@@ -81,7 +83,8 @@ function ResultDrawer({ analysisId, onClose }) {
       >
         {/* Drawer header */}
         <div className="sticky top-0 bg-[#0f0f0f] border-b border-white/8 px-6 py-4 flex items-center justify-between z-10">
-          <div className="w-8 h-1 bg-white/20 rounded-full sm:hidden mx-auto absolute left-1/2 -translate-x-1/2 top-2" />
+          <div className="w-8 h-1 bg-white/20 rounded-full sm:hidden absolute left-1/2 -translate-x-1/2 top-2" />
+
           {loading ? (
             <div className="text-sm text-white/40 font-mono">Loading analysis...</div>
           ) : data ? (
@@ -97,6 +100,7 @@ function ResultDrawer({ analysisId, onClose }) {
           ) : (
             <div className="text-sm text-red-400">Failed to load</div>
           )}
+
           <div className="flex items-center gap-2 flex-shrink-0">
             {data && (
               <button
@@ -131,20 +135,21 @@ function ResultDrawer({ analysisId, onClose }) {
 
           {!loading && data && (
             <div className="space-y-4">
-              {/* Score row */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <CredibilityRing score={data.credibility_score} accuracy={data.fact_check?.overall_accuracy} />
+                <CredibilityRing
+                  score={data.credibility_score}
+                  accuracy={data.fact_check?.overall_accuracy}
+                  sourceDb={data.source_database}
+                />
                 <div className="sm:col-span-2">
                   <BiasMeter bias={data.bias} />
                 </div>
               </div>
-
               <ManipulationPanel manipulation={data.manipulation} />
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FactCheckPanel factCheck={data.fact_check} />
-                <ELI15Panel eli15={data.summary_eli15} missingContext={data.key_missing_context} />
-              </div>
+              <ELI15Panel
+                eli15={data.summary_eli15}
+                missingContext={data.key_missing_context}
+              />
             </div>
           )}
         </div>
@@ -154,22 +159,25 @@ function ResultDrawer({ analysisId, onClose }) {
 }
 
 export default function HistoryPage() {
-  const [analyses, setAnalyses] = useState([])
-  const [stats, setStats] = useState({})
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [deleteId, setDeleteId] = useState(null)
-  const [viewId, setViewId] = useState(null)
+  const [analyses,   setAnalyses]   = useState([])
+  const [stats,      setStats]      = useState({})
+  const [loading,    setLoading]    = useState(true)
+  const [search,     setSearch]     = useState('')
+  const [deleteId,   setDeleteId]   = useState(null)
+  const [viewId,     setViewId]     = useState(null)
   const [deletingId, setDeletingId] = useState(null)
   const navigate = useNavigate()
 
   useEffect(() => {
     Promise.all([getHistory(50), getStats()])
       .then(([h, s]) => {
-        setAnalyses(h.data.analyses || [])
+        setAnalyses(h.data?.analyses || [])
         setStats(s.data || {})
       })
-      .catch(() => toast.error('Failed to load history'))
+      .catch(err => {
+        console.error('History load error:', err)
+        toast.error('Failed to load history')
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -180,7 +188,7 @@ export default function HistoryPage() {
     try {
       await deleteAnalysis(deleteId)
       setAnalyses(prev => prev.filter(a => a.id !== deleteId))
-      toast.success('Analysis deleted')
+      toast.success('Deleted')
     } catch {
       toast.error('Failed to delete')
     } finally {
@@ -192,9 +200,9 @@ export default function HistoryPage() {
     if (!search.trim()) return true
     const q = search.toLowerCase()
     return (
-      (a.title || '').toLowerCase().includes(q) ||
-      (a.source || '').toLowerCase().includes(q) ||
-      (a.bias_label || '').toLowerCase().includes(q) ||
+      (a.title           || '').toLowerCase().includes(q) ||
+      (a.source          || '').toLowerCase().includes(q) ||
+      (a.bias_label      || '').toLowerCase().includes(q) ||
       (a.conflict_region || '').toLowerCase().includes(q)
     )
   })
@@ -216,8 +224,8 @@ export default function HistoryPage() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}
           className="grid grid-cols-3 gap-3 mb-6">
           {[
-            { value: stats.total_analyses ?? analyses.length, label: 'Total analyzed' },
-            { value: analyses.filter(a => a.bias_label && !['Neutral','Center'].includes(a.bias_label)).length, label: 'Biased detected' },
+            { value: stats.total_analyses ?? analyses.length,  label: 'Total analyzed'     },
+            { value: analyses.filter(a => a.bias_label && !['Neutral','Center'].includes(a.bias_label)).length, label: 'Bias detected' },
             { value: analyses.filter(a => a.manipulation_level === 'High').length, label: 'High manipulation' },
           ].map(({ value, label }, i) => (
             <div key={i} className="bg-[#111] border border-white/10 rounded-xl p-4 text-center">
@@ -231,21 +239,18 @@ export default function HistoryPage() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}
           className="relative mb-5">
           <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/25" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search by title, source, bias..."
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search by title, source, bias label..."
             className="w-full bg-[#111] border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-white/20 outline-none focus:border-white/25 transition-all"
           />
           {search && (
-            <button onClick={() => setSearch('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white">
+            <button onClick={() => setSearch('')}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-white">
               <X size={13} />
             </button>
           )}
         </motion.div>
 
-        {/* Results count */}
         {search && (
           <p className="text-xs text-white/30 font-mono mb-3">{filtered.length} of {analyses.length} results</p>
         )}
@@ -258,8 +263,16 @@ export default function HistoryPage() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-white/30 mb-2">{search ? 'No results match your search.' : 'No analyses yet.'}</p>
-            {!search && <a href="/" className="text-accent/60 hover:text-accent text-sm transition-colors">Analyze your first article →</a>}
+            <BarChart2 size={32} className="text-white/15 mx-auto mb-4" />
+            <p className="text-white/30 mb-2 text-sm">
+              {search ? 'No results match your search.' : 'No analyses yet — start by analyzing an article.'}
+            </p>
+            {!search && (
+              <button onClick={() => navigate('/')}
+                className="text-accent/60 hover:text-accent text-sm transition-colors mt-1">
+                Analyze your first article →
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-2">
@@ -270,16 +283,19 @@ export default function HistoryPage() {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, x: -20, height: 0, marginBottom: 0 }}
-                  transition={{ delay: i * 0.03 }}
-                  className={`bg-[#111] border rounded-xl transition-all group ${deletingId === a.id ? 'opacity-40 pointer-events-none' : 'border-white/8 hover:border-white/18'}`}
+                  transition={{ delay: Math.min(i * 0.03, 0.3) }}
+                  className={`bg-[#111] border rounded-xl transition-all ${
+                    deletingId === a.id
+                      ? 'opacity-40 pointer-events-none border-white/8'
+                      : 'border-white/8 hover:border-white/18'
+                  }`}
                 >
-                  {/* Main row */}
                   <div className="flex items-center gap-4 p-4">
-                    {/* Credibility score circle */}
+                    {/* Score circle */}
                     <div className="w-10 h-10 rounded-full border-2 flex items-center justify-center flex-shrink-0 text-xs font-bold"
                       style={{
                         borderColor: scoreColor(a.credibility_score ?? 0),
-                        color: scoreColor(a.credibility_score ?? 0),
+                        color:       scoreColor(a.credibility_score ?? 0),
                       }}>
                       {a.credibility_score ?? '—'}
                     </div>
@@ -292,18 +308,32 @@ export default function HistoryPage() {
                           <span className="text-xs font-mono bg-white/6 text-white/35 px-2 py-0.5 rounded-full">{a.conflict_region}</span>
                         )}
                         <span className="text-xs text-white/20 font-mono ml-auto hidden sm:block">
-                          {a.analyzed_at ? new Date(a.analyzed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                          {a.analyzed_at
+                            ? new Date(a.analyzed_at).toLocaleDateString('en-US', {
+                                month: 'short', day: 'numeric',
+                                hour: '2-digit', minute: '2-digit'
+                              })
+                            : ''}
                         </span>
                       </div>
-                      <p className="text-sm text-white/75 leading-snug line-clamp-1 mb-1.5">{a.title || a.url}</p>
+                      <p className="text-sm text-white/75 leading-snug line-clamp-1 mb-1.5">
+                        {a.title || a.url || 'Untitled'}
+                      </p>
                       <div className="flex items-center gap-3 flex-wrap">
                         {a.bias_label && (
-                          <span className={`text-xs font-mono px-2 py-0.5 rounded-full ${['Neutral','Center'].includes(a.bias_label) ? 'bg-green-400/10 text-green-400' : 'bg-red-400/10 text-red-400'}`}>
+                          <span className={`text-xs font-mono px-2 py-0.5 rounded-full ${
+                            ['Neutral','Center'].includes(a.bias_label)
+                              ? 'bg-green-400/10 text-green-400'
+                              : 'bg-red-400/10 text-red-400'
+                          }`}>
                             {a.bias_label}
                           </span>
                         )}
                         {a.manipulation_level && (
-                          <span className={`text-xs font-mono ${a.manipulation_level === 'High' ? 'text-red-400' : a.manipulation_level === 'Medium' ? 'text-amber-400' : 'text-green-400'}`}>
+                          <span className={`text-xs font-mono ${
+                            a.manipulation_level === 'High'   ? 'text-red-400'   :
+                            a.manipulation_level === 'Medium' ? 'text-amber-400' : 'text-green-400'
+                          }`}>
                             {a.manipulation_level} manipulation
                           </span>
                         )}
@@ -315,37 +345,26 @@ export default function HistoryPage() {
                       </div>
                     </div>
 
-                    {/* Action buttons */}
+                    {/* Actions */}
                     <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {/* View result button */}
-                      <button
-                        onClick={() => setViewId(a.id)}
+                      <button onClick={() => setViewId(a.id)}
                         className="flex items-center gap-1.5 text-xs bg-white/5 hover:bg-white/12 border border-white/10 hover:border-white/25 text-white/50 hover:text-white px-3 py-2 rounded-lg transition-all"
-                        title="View analysis"
-                      >
+                        title="View analysis">
                         <Eye size={13} />
                         <span className="hidden sm:block">View</span>
                       </button>
 
-                      {/* Open original */}
                       {a.url && a.url !== 'text-input' && (
-                        <a
-                          href={a.url}
-                          target="_blank"
-                          rel="noreferrer"
+                        <a href={a.url} target="_blank" rel="noreferrer"
                           className="flex items-center justify-center w-8 h-8 text-white/25 hover:text-white/60 border border-white/8 hover:border-white/20 rounded-lg transition-all"
-                          title="Open original article"
-                        >
+                          title="Open original article">
                           <ExternalLink size={12} />
                         </a>
                       )}
 
-                      {/* Delete */}
-                      <button
-                        onClick={() => setDeleteId(a.id)}
+                      <button onClick={() => setDeleteId(a.id)}
                         className="flex items-center justify-center w-8 h-8 text-white/20 hover:text-red-400 border border-white/8 hover:border-red-400/30 rounded-lg transition-all"
-                        title="Delete"
-                      >
+                        title="Delete">
                         <Trash2 size={12} />
                       </button>
                     </div>
@@ -356,21 +375,19 @@ export default function HistoryPage() {
           </div>
         )}
 
-        {filtered.length > 0 && (
+        {filtered.length > 0 && !loading && (
           <p className="text-center text-xs text-white/15 font-mono mt-6">
-            Showing {filtered.length} analyses · Stored in Supabase
+            {filtered.length} {filtered.length === 1 ? 'analysis' : 'analyses'} · Stored in Supabase
           </p>
         )}
       </div>
 
-      {/* Delete confirm dialog */}
       <AnimatePresence>
         {deleteId && (
           <ConfirmDialog onConfirm={handleDelete} onCancel={() => setDeleteId(null)} />
         )}
       </AnimatePresence>
 
-      {/* Result drawer */}
       <AnimatePresence>
         {viewId && (
           <ResultDrawer analysisId={viewId} onClose={() => setViewId(null)} />
