@@ -1,13 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import analyze, compare, history
-import os
+from services.database import init_db
 
-app = FastAPI(
-    title="TruthLens API",
-    description="AI-powered war news verifier & bias detector",
-    version="1.0.0"
-)
+app = FastAPI(title="TruthLens API", version="2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,14 +13,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(analyze.router, prefix="/api/v1", tags=["analyze"])
-app.include_router(compare.router, prefix="/api/v1", tags=["compare"])
-app.include_router(history.router, prefix="/api/v1", tags=["history"])
+# Create table on startup if it doesn't exist
+@app.on_event("startup")
+def startup():
+    init_db()
 
-@app.get("/")
-def root():
-    return {"status": "TruthLens API is live", "version": "1.0.0"}
+app.include_router(analyze.router, prefix="/api/v1")
+app.include_router(compare.router, prefix="/api/v1")
+app.include_router(history.router, prefix="/api/v1")
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    return {"status": "ok", "service": "TruthLens API"}
