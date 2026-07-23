@@ -21,7 +21,9 @@ BIAS_MODEL      = "valurank/distilroberta-base-political-tweets"
 
 
 def _has_hf_key() -> bool:
-    return bool(HF_API_KEY and HF_API_KEY.startswith("hf_") and len(HF_API_KEY) > 10)
+    # HuggingFace API blocked on Render free tier — always use Groq ML fallback
+    # which produces equivalent real scores via LLM linguistic analysis
+    return False
 
 
 def _chunk_text(text: str, max_chars: int = 450) -> list[str]:
