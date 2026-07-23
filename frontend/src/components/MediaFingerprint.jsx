@@ -40,7 +40,7 @@ export default function MediaFingerprint({ data }) {
   // Base: 20 if any claims exist, +10 per claim, +15 per verified, -20 per disputed, max 95
   const factDensity = total === 0
     ? 15
-    : Math.round(Math.max(5, Math.min(95, 20 + total * 10 + verified * 15 - disputed * 20)))
+    : clamp(20 + total * 10 + verified * 15 - disputed * 20)
 
   // ── Dimension 4: EMOTIONAL RESTRAINT ─────────────────────────────────────
   // Source: inverse of blended manipulation score
@@ -54,7 +54,7 @@ export default function MediaFingerprint({ data }) {
   const fearScore  = ml.available ? (ml.emotions?.scores?.fear    ?? 0) : 0
   const angerScore = ml.available ? (ml.emotions?.scores?.anger   ?? 0) : 0
   const emotionPenalty = Math.round(Math.max(0, (fearScore + angerScore) / 2 - 20))
-  const restraint  = Math.round(Math.max(5, Math.min(95, 100 - blendedManip - emotionPenalty)))
+  const restraint  = clamp(100 - blendedManip - emotionPenalty)
 
   // ── Dimension 5: SOURCE CREDIBILITY ──────────────────────────────────────
   // Source: source_database base score (real AllSides/MBFC data) if available,
@@ -75,7 +75,7 @@ export default function MediaFingerprint({ data }) {
     }
     sourceCredibility = Math.round(reliabilityMap[data.source_reliability] ?? credibility * 0.65)
   }
-  sourceCredibility = Math.round(Math.max(5, Math.min(95, sourceCredibility)))
+  sourceCredibility = clamp(sourceCredibility)
 
   // ── Dimension 6: ANALYSIS CONFIDENCE ─────────────────────────────────────
   // Source: combination of how much content we had + ML model confidence + Groq confidence
@@ -88,6 +88,9 @@ export default function MediaFingerprint({ data }) {
   const analysisConf  = Math.round(Math.max(5, Math.min(95,
     contentScore + mlScore + biasConfScore + scrapePenalty
   )))
+
+  // Safe clamp helper
+  const clamp = (v, lo=5, hi=95) => isNaN(v) || v == null ? 50 : Math.round(Math.max(lo, Math.min(hi, v)))
 
   const dims = [
     { label: 'Credibility',    value: credibility,      source: 'Groq score'                },

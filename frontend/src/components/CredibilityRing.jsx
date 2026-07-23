@@ -14,7 +14,8 @@ function bgClass(s) {
        : 'bg-red-400/8 border-red-400/20'
 }
 
-export default function CredibilityRing({ score = 0, accuracy, sourceDb }) {
+export default function CredibilityRing({ score: rawScore, accuracy, sourceDb }) {
+  const score = isNaN(Number(rawScore)) ? 0 : Math.max(0, Math.min(100, Number(rawScore) || 0))
   const offset = C - (C * score) / 100
   const c = color(score)
 

@@ -22,7 +22,16 @@ export default function ManipulationPanel({ manipulation }) {
 
   if (!manipulation) return null
 
-  const { level, score, flagged_phrases = [], emotional_tone, dominant_emotion, dominant_emotion_score } = manipulation
+  const {
+    level,
+    score,
+    flagged_phrases = [],
+    emotional_tone,
+    dominant_emotion,
+    dominant_emotion_score,
+    emotion_scores,
+  } = manipulation
+  const manipScore = score ?? 0
   const cfg = LEVEL_CONFIG[level] || LEVEL_CONFIG.Low
   const hasRealPhrases = flagged_phrases.length > 0
 
@@ -54,7 +63,7 @@ export default function ManipulationPanel({ manipulation }) {
         <div>
           {/* Tone row */}
           <div className="flex flex-wrap gap-4 mb-4">
-            {emotional_tone && emotional_tone !== 'Neutral' && (
+            {emotional_tone && (emotional_tone !== 'Neutral' || manipScore > 30) && (
               <div className="bg-white/4 border border-white/8 rounded-lg px-3 py-2">
                 <div className="text-xs text-white/25 font-mono mb-0.5">Emotional tone</div>
                 <div className="text-sm font-medium text-white">{emotional_tone}</div>

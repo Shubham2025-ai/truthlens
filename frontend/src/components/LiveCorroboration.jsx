@@ -78,7 +78,7 @@ function SourcePill({ source }) {
           )}
           {source.published_at && (
             <span className="text-xs font-mono text-white/20">
-              {new Date(source.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+              {(source.published_at ? new Date(source.published_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '')}
             </span>
           )}
         </div>
@@ -94,7 +94,7 @@ function SourcePill({ source }) {
 
 function ClaimCard({ claim, index, defaultOpen }) {
   const [open, setOpen] = useState(defaultOpen)
-  const cfg = STATUS_CONFIG[claim.status] || STATUS_CONFIG['Unverified']
+  const cfg = STATUS_CONFIG[claim?.status] || STATUS_CONFIG['Unverified']
   const Icon = cfg.icon
   const corroboration = claim.corroboration || []
   const trustedSources = corroboration.filter(s => s.trusted)

@@ -101,6 +101,9 @@ async def _run_analysis(article: dict, url: str) -> dict:
         raise HTTPException(status_code=500, detail=f"AI analysis failed: {str(e)}")
 
     result = {**article, **ai_result, "from_cache": False, "scrape_failed": scrape_failed}
+    # Ensure word_count always present
+    if "word_count" not in result or not result["word_count"]:
+        result["word_count"] = len(result.get("content", "").split())
 
     # ML analysis — always run; ml_service uses Groq fallback when HF unavailable
     content_for_ml = article.get("content", "")
@@ -220,6 +223,15 @@ async def analyze_text(req: TextAnalyzeRequest):
     except Exception:
         result["ml_analysis"] = {"available": False}
 
+    # Corroborate claims on text input too
+    try:
+        claims = result.get("fact_check", {}).get("verifiable_claims", [])
+        if claims:
+            enriched = corroborate_claims(claims, result.get("conflict_region", ""))
+            result["fact_check"]["verifiable_claims"] = enriched
+    except Exception as e:
+        print(f"Text corroboration error (non-fatal): {e}")
+
     # Related coverage based on AI-detected region/topic
     try:
         result["related_sources"] = _get_related(
@@ -230,7 +242,7 @@ async def analyze_text(req: TextAnalyzeRequest):
     except Exception:
         result["related_sources"] = []
 
-    # Save to history — was missing before!
+    # Save to history
     save_analysis(result)
 
     return result

@@ -2,14 +2,15 @@ import { motion } from 'framer-motion'
 import { useState, useEffect } from 'react'
 
 const STEPS = [
-  { label: 'Fetching article...', pct: 12, detail: 'Direct server fetch' },
-  { label: 'Extracting content...', pct: 28, detail: 'Parsing HTML structure' },
-  { label: 'Trying alternate sources...', pct: 44, detail: 'Jina Reader API fallback' },
-  { label: 'Running bias detection...', pct: 58, detail: 'Groq Llama 3.3 70B' },
-  { label: 'Checking facts with AI...', pct: 71, detail: 'Claim verification' },
-  { label: 'Running ML models...', pct: 83, detail: 'HuggingFace transformers' },
-  { label: 'Scanning manipulation...', pct: 92, detail: 'Emotion + sentiment analysis' },
-  { label: 'Building your report...', pct: 98, detail: 'Generating insights' },
+  { label: 'Fetching article...', pct: 12, detail: '4-layer extraction pipeline' },
+  { label: 'Extracting content...', pct: 28, detail: 'Parsing article structure' },
+  { label: 'Reaching all sources...', pct: 44, detail: 'Bypass detection fallback' },
+  { label: 'Detecting bias & framing...', pct: 58, detail: 'AI language analysis' },
+  { label: 'Verifying claims...', pct: 68, detail: 'Cross-referencing facts' },
+  { label: 'Corroborating with news...', pct: 76, detail: 'Independent source check' },
+  { label: 'Running ML analysis...', pct: 85, detail: 'Sentiment & emotion models' },
+  { label: 'Checking legal compliance...', pct: 93, detail: 'IT Act & CPA 2019' },
+  { label: 'Building your report...', pct: 98, detail: 'Generating full analysis' },
 ]
 
 export default function LoadingAnalysis() {

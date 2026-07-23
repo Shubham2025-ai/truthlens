@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from groq import Groq
 from dotenv import load_dotenv
 
@@ -10,13 +11,50 @@ MODEL = "llama-3.3-70b-versatile"
 
 
 def _parse_json(raw: str) -> dict:
+    """Parse Groq JSON response robustly — never crash on malformed output."""
     raw = raw.strip()
+    # Strip markdown code fences
     if raw.startswith("```"):
         parts = raw.split("```")
         raw = parts[1] if len(parts) > 1 else raw
         if raw.startswith("json"):
             raw = raw[4:]
-    return json.loads(raw.strip())
+    raw = raw.strip()
+    # First attempt: direct parse
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+    # Second attempt: find first { ... } block in the response
+    try:
+        start = raw.index("{")
+        end   = raw.rindex("}") + 1
+        return json.loads(raw[start:end])
+    except (ValueError, json.JSONDecodeError):
+        pass
+    # Third attempt: strip trailing commas (common Groq mistake)
+    try:
+        cleaned = re.sub(r",\s*([}\]])", r"\1", raw)
+        return json.loads(cleaned)
+    except (json.JSONDecodeError, Exception):
+        pass
+    # Final fallback: return minimal valid structure so analysis never fully fails
+    print(f"[WARN] _parse_json failed on: {raw[:200]}")
+    return {
+        "credibility_score": 50,
+        "bias": {"label": "Unknown", "confidence": 50, "pro_side_pct": 33,
+                 "against_side_pct": 33, "neutral_pct": 34,
+                 "explanation": "Analysis incomplete.", "evidence": [],
+                 "reference_sources": []},
+        "manipulation": {"level": "Unknown", "score": 0, "flagged_phrases": [],
+                         "emotional_tone": "Unknown"},
+        "fact_check": {"verifiable_claims": [], "overall_accuracy": "Unknown"},
+        "trust_indicators": [], "trust_concerns": [],
+        "summary_eli15": "Analysis could not be completed for this article.",
+        "key_missing_context": "",
+        "source_reliability": "Unknown",
+        "conflict_region": "",
+    }
 
 
 def urlparse_source(url: str) -> str:

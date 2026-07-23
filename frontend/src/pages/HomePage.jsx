@@ -8,10 +8,10 @@ import LoadingAnalysis from '../components/LoadingAnalysis.jsx'
 
 // ── Demo URLs — real working articles ──────────────────────────────────────
 const DEMOS = [
-  { label: 'AP News',      url: 'https://apnews.com/article/israel-iran-nuclear-trump-2025' },
-  { label: 'The Guardian', url: 'https://www.theguardian.com/world/israel' },
-  { label: 'DW News',      url: 'https://www.dw.com/en/middle-east/t-17860516' },
-  { label: 'Al Jazeera',   url: 'https://www.aljazeera.com/news/' },
+  { label: 'AP News',      url: 'https://apnews.com/hub/world-news' },
+  { label: 'The Guardian', url: 'https://www.theguardian.com/world/middleeast' },
+  { label: 'DW News',      url: 'https://www.dw.com/en/middle-east/s-11407' },
+  { label: 'Al Jazeera',   url: 'https://www.aljazeera.com/where/middle-east/' },
 ]
 
 // ── Live ticker items ──────────────────────────────────────────────────────
