@@ -14,6 +14,9 @@ export default function MediaFingerprint({ data }) {
   const ml     = data.ml_analysis || {}
   const db     = data.source_database || null
 
+  // Safe clamp helper — must be defined before any dimension calculation
+  const clamp = (v, lo=5, hi=95) => isNaN(v) || v == null ? 50 : Math.round(Math.max(lo, Math.min(hi, v)))
+
   // ── Dimension 1: CREDIBILITY ─────────────────────────────────────────────
   // Source: directly from Groq credibility_score (0-100)
   const credibility = Math.round(Math.max(0, Math.min(100, data.credibility_score ?? 50)))
@@ -89,9 +92,6 @@ export default function MediaFingerprint({ data }) {
     contentScore + mlScore + biasConfScore + scrapePenalty
   )))
 
-  // Safe clamp helper
-  const clamp = (v, lo=5, hi=95) => isNaN(v) || v == null ? 50 : Math.round(Math.max(lo, Math.min(hi, v)))
-
   const dims = [
     { label: 'Credibility',    value: credibility,      source: 'Groq score'                },
     { label: 'Objectivity',    value: objectivity,      source: 'Bias neutral% + confidence' },
@@ -101,7 +101,7 @@ export default function MediaFingerprint({ data }) {
     { label: 'AI Confidence',  value: analysisConf,     source: `${wordCount} words · ${ml.available ? 'ML+LLM' : 'LLM only'}` },
   ]
 
-  const avgScore = Math.round(dims.reduce((s, d) => s + d.value, 0) / dims.length)
+  const avgScore = Math.round(dims.reduce((s, d) => s + (isNaN(d.value) ? 50 : d.value), 0) / dims.length)
   const strokeColor = avgScore >= 70 ? '#2ecc71' : avgScore >= 45 ? '#f39c12' : '#e74c3c'
   const fillColor   = avgScore >= 70 ? 'rgba(46,204,113,0.12)' : avgScore >= 45 ? 'rgba(243,156,18,0.12)' : 'rgba(231,76,60,0.15)'
 

@@ -51,7 +51,7 @@ export default function ManipulationPanel({ manipulation }) {
         <div className="flex items-center gap-2.5">
           <div className={`flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-mono ${cfg.bg} ${cfg.border} ${cfg.color}`}>
             <div className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-            {level} Risk · {score}/100
+            {level} Risk · {manipScore}/100
           </div>
           <button onClick={() => setExpanded(e => !e)} className="text-white/25 hover:text-white transition-colors">
             {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
