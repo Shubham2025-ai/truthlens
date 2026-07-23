@@ -12,7 +12,6 @@ import ManipulationPanel  from '../components/ManipulationPanel.jsx'
 import LiveCorroboration from '../components/LiveCorroboration.jsx'
 import ELI15Panel         from '../components/ELI15Panel.jsx'
 import TrustEvidence      from '../components/TrustEvidence.jsx'
-import CompliancePanel    from '../components/CompliancePanel.jsx'
 import MLInsights         from '../components/MLInsights.jsx'
 import MediaFingerprint   from '../components/MediaFingerprint.jsx'
 import ShareCard          from '../components/ShareCard.jsx'
@@ -328,20 +327,13 @@ export default function ResultPage() {
           <TrustEvidence data={data} />
         </Section>
 
-        {/* ══ 7. LEGAL COMPLIANCE ═════════════════════════════════════════ */}
-        <Section label="Legal compliance — Indian law" delay={0.32}>
-          <CompliancePanel data={data} />
+        {/* ══ 7. ML INSIGHTS ══════════════════════════════════════════════ */}
+        <Section label="ML model analysis" delay={0.32}>
+          <MLInsights ml={data.ml_analysis} bias={data.bias} manip={data.manipulation} />
         </Section>
 
-        {/* ══ 8. ML INSIGHTS ══════════════════════════════════════════════ */}
-        {data.ml_analysis?.available && (
-          <Section label="ML model analysis" delay={0.36}>
-            <MLInsights ml={data.ml_analysis} />
-          </Section>
-        )}
-
-        {/* ══ 9. FINGERPRINT + SHARE ══════════════════════════════════════ */}
-        <Section label="Media fingerprint & share" delay={0.40}>
+        {/* ══ 8. FINGERPRINT + SHARE ══════════════════════════════════════ */}
+        <Section label="Media fingerprint & share" delay={0.36}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <MediaFingerprint data={data} />
             <ShareCard data={data} />
@@ -350,7 +342,7 @@ export default function ResultPage() {
 
         {/* ══ 10. RELATED SOURCES ═════════════════════════════════════════ */}
         {data.related_sources?.length > 0 && (
-          <Section label="Other sources covering this story" delay={0.44}>
+          <Section label="Other sources covering this story" delay={0.40}>
             <RelatedSources sources={data.related_sources} />
           </Section>
         )}

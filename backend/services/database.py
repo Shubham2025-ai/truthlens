@@ -30,7 +30,7 @@ def _get_conn():
         if not DATABASE_URL:
             print("[DB] DATABASE_URL not set")
             return None
-        _conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+        _conn = psycopg2.connect(DATABASE_URL)
         _conn.autocommit = True
         print("[DB] Connected to PostgreSQL")
         return _conn

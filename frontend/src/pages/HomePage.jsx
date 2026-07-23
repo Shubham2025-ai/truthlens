@@ -385,7 +385,7 @@ export default function HomePage() {
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-green-400 live-dot" />
-                <span className="text-xs font-mono text-white/25">Powered by Supabase</span>
+                <span className="text-xs font-mono text-white/25">Live database</span>
               </div>
             </div>
             <div className="space-y-2">

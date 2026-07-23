@@ -122,7 +122,7 @@ function ResultDrawer({ analysisId, onClose }) {
           {loading && (
             <div className="flex flex-col items-center py-12 gap-3">
               <div className="w-8 h-8 border-2 border-white/10 border-t-accent rounded-full animate-spin" />
-              <p className="text-sm text-white/30 font-mono">Fetching from Supabase...</p>
+              <p className="text-sm text-white/30 font-mono">Loading analysis...</p>
             </div>
           )}
 
@@ -217,7 +217,7 @@ export default function HistoryPage() {
             <Clock size={18} className="text-white/40" />
             <h1 className="font-serif text-3xl text-white">Analysis History</h1>
           </div>
-          <p className="text-white/35 text-sm">All articles analyzed — stored in Supabase. Click any row to view full results.</p>
+          <p className="text-white/35 text-sm">All articles analyzed and stored. Click any row to view full results.</p>
         </motion.div>
 
         {/* Stats */}
@@ -259,7 +259,7 @@ export default function HistoryPage() {
         {loading ? (
           <div className="flex flex-col items-center py-20 gap-3">
             <div className="w-8 h-8 border-2 border-white/10 border-t-accent rounded-full animate-spin" />
-            <p className="text-white/30 font-mono text-sm">Loading from Supabase...</p>
+            <p className="text-white/30 font-mono text-sm">Loading history...</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20">
@@ -377,7 +377,7 @@ export default function HistoryPage() {
 
         {filtered.length > 0 && !loading && (
           <p className="text-center text-xs text-white/15 font-mono mt-6">
-            {filtered.length} {filtered.length === 1 ? 'analysis' : 'analyses'} · Stored in Supabase
+            {filtered.length} {filtered.length === 1 ? 'analysis' : 'analyses'} · Stored in database
           </p>
         )}
       </div>
