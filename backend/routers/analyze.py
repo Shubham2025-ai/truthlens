@@ -48,41 +48,50 @@ def _merge_ml(result: dict, ml: dict) -> dict:
 
 def _get_related(title: str, conflict_region: str, source: str) -> list[dict]:
     """
-    Search for related coverage. Falls back to smart curated links
-    when NewsAPI key is missing or returns nothing useful.
+    Get related coverage. Returns real articles when NewsAPI available,
+    otherwise returns clean search links that look professional.
     """
-    # Use conflict_region if available for better query
-    query_base = conflict_region or " ".join(title.split()[:6])
-    query = query_base[:80]
+    # Build the best possible query
+    query = conflict_region or " ".join(title.split()[:7])
+    query = query[:80].strip()
 
-    results = search_same_story(query, exclude_domain=source, limit=3)
+    # Try to get real articles
+    results = search_same_story(query, exclude_domain=source, limit=4)
 
-    # Filter out the generic "Search for: X" fallback entries — they look bad
-    real_results = [r for r in results if not r.get("title", "").startswith("Search for:")]
+    # Filter: remove anything that looks like a fallback search link
+    bad_prefixes = ("Search for:", "BBC coverage:", "Al Jazeera coverage:", "Reuters coverage:")
+    real = [r for r in results if r.get("url","").startswith("http")
+            and not r.get("title","").startswith(bad_prefixes)
+            and "[Removed]" not in r.get("title","")]
 
-    if real_results:
-        return real_results
+    if real:
+        return real[:3]
 
-    # Build smart curated links based on the topic
-    topic = (conflict_region or query).replace(" ", "+")
+    # No real articles — build clean, professional search links
+    # Use the conflict region or top keywords as search term
+    topic = query.replace(" ", "+")
+    clean_topic = conflict_region or " ".join(title.split()[:4])
     return [
         {
-            "source": "BBC News",
-            "title": f"BBC coverage: {conflict_region or title[:60]}",
-            "url": f"https://www.bbc.com/search?q={topic}",
-            "description": "Search BBC News for related coverage",
+            "source":      "Reuters",
+            "title":       f"Search Reuters — {clean_topic}",
+            "url":         f"https://www.reuters.com/search/news?blob={topic}",
+            "description": "Find independent Reuters coverage of this story",
+            "is_search":   True,
         },
         {
-            "source": "Al Jazeera",
-            "title": f"Al Jazeera coverage: {conflict_region or title[:60]}",
-            "url": f"https://www.aljazeera.com/search/{topic}",
-            "description": "Search Al Jazeera for related coverage",
+            "source":      "BBC News",
+            "title":       f"Search BBC News — {clean_topic}",
+            "url":         f"https://www.bbc.com/search?q={topic}",
+            "description": "Find BBC News coverage of this story",
+            "is_search":   True,
         },
         {
-            "source": "Reuters",
-            "title": f"Reuters coverage: {conflict_region or title[:60]}",
-            "url": f"https://www.reuters.com/search/news?blob={topic}",
-            "description": "Search Reuters for related coverage",
+            "source":      "AP News",
+            "title":       f"Search AP News — {clean_topic}",
+            "url":         f"https://apnews.com/search?query={topic}",
+            "description": "Find Associated Press coverage of this story",
+            "is_search":   True,
         },
     ]
 
