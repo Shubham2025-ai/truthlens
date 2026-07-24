@@ -12,7 +12,7 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    console.error('TruthLens ErrorBoundary:', error, info)
+    // Error captured by boundary
   }
 
   render() {

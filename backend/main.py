@@ -22,6 +22,10 @@ app.include_router(analyze.router, prefix="/api/v1")
 app.include_router(compare.router, prefix="/api/v1")
 app.include_router(history.router, prefix="/api/v1")
 
+@app.get("/")
+def root():
+    return {"message": "TruthLens API", "docs": "/docs", "health": "/health"}
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "TruthLens API"}
+    return {"status": "ok", "service": "TruthLens API", "version": "2.0"}

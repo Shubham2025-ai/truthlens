@@ -86,8 +86,8 @@ def corroborate_claims(claims: list[dict], conflict_region: str = "") -> list[di
         claim_text = claim.get("claim", "")
         status     = claim.get("status", "Unverified")
 
-        # Only search for Likely True and Disputed claims — these benefit most from corroboration
-        if status in ("Likely True", "Disputed", "Likely False") and len(claim_text) > 15:
+        # Only search for Likely True and Disputed — avoids too many API calls slowing analysis
+        if status in ("Likely True", "Disputed") and len(claim_text) > 15:
             corroboration = _search_claim_evidence(claim_text, conflict_region, status)
             claim["corroboration"] = corroboration
         else:

@@ -397,11 +397,25 @@ def _extract_content(soup: BeautifulSoup, url: str = "") -> str:
 
 
 def _title_from_url(url: str) -> str:
-    path = urlparse(url).path
-    slug = path.rstrip("/").split("/")[-1]
-    slug = re.sub(r"-\d{4}-\d{2}-\d{2}$","",slug)
-    slug = re.sub(r"-[a-z0-9]{8,}$","",slug)
-    return slug.replace("-"," ").title() if slug else "Article"
+    """Extract readable title from URL slug. Never returns hex hashes or IDs."""
+    try:
+        from urllib.parse import urlparse as _up
+        path = _up(url).path
+        slug = path.rstrip("/").split("/")[-1]
+        # Reject pure hex hashes like D226D142657Cd297
+        if re.match(r'^[a-fA-F0-9]{8,}$', slug):
+            return "Article"
+        # Remove date and hash suffixes
+        slug = re.sub(r"-\d{4}-\d{2}-\d{2}.*$", "", slug)
+        slug = re.sub(r"-[a-fA-F0-9]{8,}$", "", slug)
+        slug = re.sub(r"-\d{6,}$", "", slug)
+        slug = slug.replace("-", " ").replace("_", " ").strip()
+        # Reject if result looks like an ID
+        if not slug or len(slug) < 4 or re.match(r'^[a-f0-9 ]+$', slug.lower()):
+            return "Article"
+        return slug.title()
+    except Exception:
+        return "Article"
 
 
 def _clean_text(text: str) -> str:

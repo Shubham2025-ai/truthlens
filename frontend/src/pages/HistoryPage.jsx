@@ -175,7 +175,7 @@ export default function HistoryPage() {
         setStats(s.data || {})
       })
       .catch(err => {
-        console.error('History load error:', err)
+        // history load failed silently
         toast.error('Failed to load history')
       })
       .finally(() => setLoading(false))
