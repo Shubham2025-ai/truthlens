@@ -4,8 +4,8 @@
 
 **AI-powered news bias detector, credibility scorer & manipulation analyzer**
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-truthlens-ecru.vercel.app-c0392b?style=for-the-badge)](https://truthlens-ecru.vercel.app)
-[![API Docs](https://img.shields.io/badge/API%20Docs-onrender.com/docs-2c3e50?style=for-the-badge)](https://truthlens-uopu.onrender.com/docs)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-truthlens--ecru.vercel.app-c0392b?style=for-the-badge)](https://truthlens-ecru.vercel.app)
+[![API Docs](https://img.shields.io/badge/API%20Docs-Render-2c3e50?style=for-the-badge)](https://truthlens-uopu.onrender.com/docs)
 [![License](https://img.shields.io/badge/License-MIT-27ae60?style=for-the-badge)](#)
 
 Paste any news article URL. Get bias score, credibility rating, manipulation alerts, fact checks, and live corroboration from independent sources — in under 15 seconds. Backed by AllSides, Ad Fontes Media & Media Bias/Fact Check published research.
@@ -334,8 +334,8 @@ MIT
 
 <div align="center">
 
-Built for HackVenture 2026
+Built for Social Impact AI Hackathon 2026
 
-[truthlens.vercel.app](https://truthlens.vercel.app)
+[truthlens-ecru.vercel.app](https://truthlens-ecru.vercel.app)
 
 </div>
